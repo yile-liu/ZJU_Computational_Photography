@@ -10,344 +10,230 @@
 using namespace std;
 using namespace cv;
 
-#define NUM_OF_IMAGES 7
-#define USER_DRAW_MASK 0
-#define PRE_MADE_MASK 1
-#define LINE_STRUCTURE 0
-#define CURVE_STRUCTURE 1
+enum _line_or_curve
+{
+    LINE,
+    CURVE
+};
 
-#define ks 0.25
-#define ki 0.75
+char *image_path;
+char *save_path;
 
-Mat img;
-Mat mask;
-Mat mask_inv;
-Mat draw_mask;
-Mat show_brush;
-Mat img_masked;
-Mat draw_structure;
-Mat mask_structure;
-Mat sp_result;
-Mat ts_result;
-Point pt;
-Point prev_pt;
-Point points[2] = {Point(-1, -1), Point(-1, -1)};
-vector<Point> curvepoints;
-vector<vector<Point>> plist;
-vector<vector<Point>> mousepoints;
-StructurePropagation SP;
-int brush_size;
-int img_current = 4;
+Mat image_src;       // source, not changed
+Mat mask;            // 255 for mask, 0 for background
+Mat image_with_mask; // masked part of image_src is painted to (255, 0, 0)
+
+vector<vector<Point>> structure_line_set;
+
+int brush_size = 30;
 int block_size = 20;
 int sample_step = 10;
-int line_or_curve = LINE_STRUCTURE;
-int points_i=0;
+int line_or_curve = 0;
 
-void get_input_image();
-void get_input_mask(int mask_from);
-static void callback_draw_mask(int event, int x, int y, int flags, void* param);
-void make_masked_image();
-void show_interface();
-static void callback_draw_structure(int event, int x, int y, int flags, void* param);
-
-int main(int argc, char* argv[])
+static void drawMaskMouseCallback(int event, int x, int y, int flags, void *param)
 {
-    get_input_image();
-    get_input_mask(USER_DRAW_MASK);
-    make_masked_image();
-    show_interface();
-	return 0;
-}
+    // brush and mask are painted in special color, only for UI
+    static Mat image_with_mask_and_brush;
 
-/**
- * Choose one of the original images as input.
- * Press Key '[' to switch to last one, and Key ']' to switch to next one.
- * Press Key 'esc' to confirm the choice.
- */
-void get_input_image()
-{
-    img = imread("img" + to_string(img_current) + ".png", 1);
-    imshow("img", img);
-    char k = waitKey(0);
-    cout << "choose images" << endl;
-    while (k != 27)
+    // flags is always zero here so I have to maintain left button status manually
+    static bool hold_left = false;
+    if (event == EVENT_LBUTTONDOWN)
     {
-        // last image
-        if (k == '[')
-        {
-            img_current = (img_current + NUM_OF_IMAGES - 1) % NUM_OF_IMAGES;
-        }
-        // next image
-        else if (k == ']')
-        {
-            img_current = (img_current + 1) % NUM_OF_IMAGES;
-        }
-        img = imread("img" + to_string(img_current) + ".png", 1);
-        imshow("img", img);
-        k = waitKey(0);
-    }
-    destroyAllWindows();
-}
-
-/**
- * Get a mask for the region of interest from the input image.
- * If user draws the mask,
- *      press Key '[' to get a smaller brush, and Key ']' to get a larger brush;
- *      press Key 'esc' to save the mask, and Key 'r' to reset.
- */
-void get_input_mask(int mask_from)
-{
-    // user draws the mask
-    if (mask_from == USER_DRAW_MASK)
-    {
-        mask = Mat::zeros(img.rows, img.cols, CV_8UC1);
-        draw_mask = img.clone();
-        show_brush = draw_mask.clone();
-        brush_size = 30;
-        prev_pt = Point(-1, -1);
-
-        namedWindow("draw mask");
-        imshow("draw mask", show_brush);
-        setMouseCallback("draw mask", callback_draw_mask);
-
-        char k = waitKey(0);
-        while (k != 27)
-        {
-            // reset
-            if (k == 'r')
-            {
-                mask = Mat::zeros(img.rows, img.cols, CV_8UC1);
-                draw_mask = img.clone();
-                prev_pt = Point(-1, -1);
-            }
-            // smaller brush
-            else if (k == '[')
-            {
-                if (brush_size > 1)
-                {
-                    brush_size--;
-                }
-            }
-            // larger brush
-            else if (k == ']')
-            {
-                if (brush_size < 40)
-                {
-                    brush_size++;
-                }
-            }
-
-            show_brush = draw_mask.clone();
-            circle(show_brush, pt, brush_size, Scalar(255, 0, 255), -1);
-            imshow("draw mask", show_brush);
-
-            k = waitKey(0);
-        }
-    }
-    // load pre-made mask
-    else if (mask_from == PRE_MADE_MASK)
-    {
-        mask = imread("mask" + to_string(img_current) + ".bmp", 0);
-    }
-    threshold(mask, mask_inv, 100, 255, THRESH_BINARY_INV);
-    destroyAllWindows();
-}
-
-/**
- * Mouse callback function for drawing the mask.
- */
-static void callback_draw_mask(int event, int x, int y, int flags, void* param)
-{
-    pt = Point(x, y);
-    if ((event == EVENT_MOUSEMOVE && (flags & EVENT_FLAG_LBUTTON)) || event == EVENT_LBUTTONDOWN)
-    {
-        if (prev_pt.x == -1)
-        {
-            prev_pt = pt;
-        }
-        line(mask, prev_pt, pt, Scalar(255), 2 * brush_size);
-        line(draw_mask, prev_pt, pt, Scalar(255, 0, 0), 2 * brush_size);
-        prev_pt = pt;
+        hold_left = true;
     }
     else if (event == EVENT_LBUTTONUP)
     {
-        prev_pt = Point(-1, -1);
+        hold_left = false;
     }
 
-    show_brush = draw_mask.clone();
-    circle(show_brush, pt, brush_size, Scalar(255, 0, 255), -1);
-    imshow("draw mask", show_brush);
-}
+    // for the mouse event sample rate is relatively low, draw line is better than draw point
+    // otherwise it's easily to draw series of sparse points when moving mouse quickly
+    static Point pt_curr = Point(-1, -1);
+    static Point pt_prev = Point(-1, -1);
 
-/**
- * Mask the region of interest.
- */
-void make_masked_image()
-{
-	img_masked = Mat::zeros(img.size(), CV_8UC3);
-	img.copyTo(img_masked, mask_inv);
-	imwrite("img_masked/img_m" + to_string(img_current) + ".png", img_masked);
-}
+    pt_prev = pt_curr.x == -1 ? Point(x, y) : pt_curr;
+    pt_curr = Point(x, y);
 
-/**
- * Show the user interface for drawing structural lines and curves.
- * Press Key 's' to run structure propagation, and Key 't' to run texture synthesis.
- * Press Key 'r' to reset, and Key 'a' to save.
- * Press Key 'e' to show curve points.
- */
-void show_interface()
-{
-	prev_pt = Point(-1, -1);
-	sp_result = img_masked.clone();
-	draw_structure = img_masked.clone();
-    mask_structure = Mat::zeros(img.rows, img.cols, CV_8UC1);
-
-    ofstream f;
-    f.open("point_list/plist" + to_string(img_current) + ".txt", ios::out); // clear old data
-    f.close();
-
-	namedWindow("run");
-	createTrackbar("Block Size", "run", &block_size, 50);
-	createTrackbar("Sample Step", "run", &sample_step, 20);
-	createTrackbar("Line or Curve", "run", &line_or_curve, 1);
-	imshow("run", draw_structure);
-	setMouseCallback("run", callback_draw_structure);
-
-	char k = waitKey(0);
-	while (k != 27)
-	{
-		// structure propagation
-		if (k == 's')
-		{
-            if (line_or_curve == CURVE_STRUCTURE)
-            {
-                plist.resize(mousepoints.size());
-                for (int i = 0; i < mousepoints.size(); i++)
-                {
-                    GetCurve(mousepoints[i], plist[i]);
-                }
-            }
-
-            for (int i = 0; i < plist.size(); i++)
-            {
-                DrawPoints(plist[i], draw_structure, CV_RGB(255, 0, 0), 1);
-
-                // save points along structure lines/curves
-                f.open("point_list/plist" + to_string(img_current) + ".txt", ios::app); // append
-                for (int j = 0; j < plist[i].size(); j++)
-                {
-                    f << plist[i][j].x << " " << plist[i][j].y << endl;
-                }
-                f << endl;
-                f.close();
-            }
-
-            Mat mask_structure_tmp = Mat::zeros(img.rows, img.cols, CV_8UC1);
-
-            // run structure propagation
-            SP.SetParam(block_size, sample_step, line_or_curve, ks, ki);
-            SP.Run(mask_inv, img_masked, mask_structure_tmp, plist, sp_result);
-
-            mask_structure_tmp.copyTo(mask_structure, mask_structure_tmp);
-            draw_structure = sp_result.clone();
-            imshow("run", draw_structure);
-
-            plist.clear();
-            mousepoints.clear();
-		}
-		// reset
-		else if (k == 'r')
-        {
-		    draw_structure = img_masked.clone();
-		    sp_result = img_masked.clone();
-            mask_structure = Mat::zeros(img.rows, img.cols, CV_8UC1);
-            imshow("run", draw_structure);
-
-            plist.clear();
-            mousepoints.clear();
-        }
-		// save
-		else if (k == 'a')
-        {
-            imwrite("sp_result/sp" + to_string(img_current) + ".png", sp_result); // structure result
-            imwrite("ts_result/ts" + to_string(img_current) + ".png", ts_result); // texture result
-            imwrite("mask_structure/mask_s" + to_string(img_current) + ".bmp", mask_structure); // structure mask
-        }
-		// show curve points
-        else if (k == 'e')
-        {
-            plist.resize(mousepoints.size());
-            for (int i = 0; i < mousepoints.size(); i++)
-            {
-                GetCurve(mousepoints[i], plist[i]);
-                DrawPoints(plist[i], draw_structure, CV_RGB(0, 0, 255), 1);
-            }
-            imshow("run", draw_structure);
-        }
-        // texture synthesis
-        else if (k == 't')
-        {
-            texture(img, sp_result, mask, ts_result, mask_structure, "point_list/plist" + to_string(img_current) + ".txt");
-            imshow("run", ts_result);
-        }
-
-        k = waitKey(0);
-	}
-}
-
-/**
- * Mouse callback function for drawing the structure lines/curves.
- */
-static void callback_draw_structure(int event, int x, int y, int flags, void* param)
-{
-    if (line_or_curve == LINE_STRUCTURE)
+    // draw mask
+    if (hold_left)
     {
-        if (event != EVENT_LBUTTONDOWN)
-        {
-            return;
-        }
-        points[points_i].x = x;
-        points[points_i].y = y;
-        points_i = (points_i + 1) % 2;
-
-        if (points[0].x != -1 && points[1].x != -1 && points_i == 0)
-        {
-            vector<Point> line;
-            LineInterpolation(points, line);
-            plist.push_back(line);
-
-            DrawPoints(line, draw_structure, Scalar(255, 0, 255), 1);
-            circle(draw_structure, points[0], 3, Scalar(255,0,0), FILLED);
-            circle(draw_structure, points[1], 3, Scalar(255,0,0), FILLED);
-
-            imshow("run", draw_structure);
-        }
+        line(mask, pt_prev, pt_curr, Scalar(255), 2 * brush_size);
+        line(image_with_mask, pt_prev, pt_curr, Scalar(255, 0, 0), 2 * brush_size);
     }
-    else // CURVE_STRUCTURE
+
+    // draw brush
+    image_with_mask_and_brush = image_with_mask.clone();
+    circle(image_with_mask_and_brush, pt_curr, brush_size, Scalar(85, 85, 255), -1);
+
+    imshow("Draw Mask", image_with_mask_and_brush);
+}
+
+void drawMask()
+{
+    mask = Mat::zeros(image_src.size(), CV_8UC1);
+    image_with_mask = image_src.clone();
+
+    namedWindow("Draw Mask");
+    createTrackbar("Brush Size", "Draw Mask", &brush_size, 50);
+    imshow("Draw Mask", image_with_mask);
+    setMouseCallback("Draw Mask", drawMaskMouseCallback);
+
+    waitKey(0);
+
+    destroyWindow("Draw Mask");
+}
+
+void drawStructureLine(const Mat &input, Mat &output, const vector<vector<Point>> &structure_line_set, const vector<Point> &curr_point_set)
+{
+    output = input.clone();
+    for (vector<Point> point_set : structure_line_set)
     {
-        if (event == EVENT_LBUTTONUP)
+        for (int i = 0; i < (int)(point_set.size()) - 1; i++)
         {
-            prev_pt = Point(-1, -1);
-            mousepoints.push_back(curvepoints);
-            curvepoints = vector<Point>();
-        }
-        if ( event == EVENT_LBUTTONDOWN )
-        {
-            prev_pt = Point(x, y);
-            curvepoints.push_back(prev_pt);
-        }
-        else if (event == EVENT_MOUSEMOVE && (flags & EVENT_FLAG_LBUTTON))
-        {
-            pt = Point(x,y);
-            curvepoints.push_back(pt);
-
-            if (prev_pt.x < 0)
-            {
-                prev_pt = pt;
-            }
-            line(draw_structure, prev_pt, pt, cvScalarAll(255), 1, 8, 0);
-            prev_pt = pt;
-            imshow("run", draw_structure);
+            line(output, point_set[i], point_set[i + 1], Scalar(85, 85, 255), 2);
         }
     }
+
+    for (int i = 0; i < (int)(curr_point_set.size()) - 1; i++)
+    {
+        line(output, curr_point_set[i], curr_point_set[i + 1], Scalar(85, 85, 255), 2);
+    }
+}
+
+static void structurePropagationMouseCallBack(int event, int x, int y, int flags, void *param)
+{
+    // image_with_mask with structure line on it, only for UI
+    static Mat image_with_structure_line;
+
+    // flags is always zero here so I have to maintain left button status manually
+    static bool hold_left = false;
+    static vector<Point> curr_point_set;
+
+    static Point pt_curr = Point(-1, -1);
+    pt_curr = Point(x, y);
+
+    // left button down, add new point
+    if (event == EVENT_LBUTTONDOWN)
+    {
+        curr_point_set.emplace_back(x, y);
+    }
+    // right bottom down, abort drawing
+    // if it's a curve and two or more points is drawn, add it to structure_line_set
+    else if (event == EVENT_RBUTTONDOWN)
+    {
+        if (line_or_curve == CURVE && curr_point_set.size() > 1)
+        {
+            structure_line_set.emplace_back(vector<Point>(curr_point_set));
+        }
+
+        curr_point_set.clear();
+    }
+
+    // if it's a line and two points is drawn, add it to structure_line_set
+    if (line_or_curve == LINE && curr_point_set.size() == 2)
+    {
+        structure_line_set.emplace_back(vector<Point>(curr_point_set));
+        curr_point_set.clear();
+    }
+
+    // draw sturcture_line on image in special color, only for UI
+    drawStructureLine(image_with_mask, image_with_structure_line, structure_line_set, curr_point_set);
+
+    // draw a line from the latest drawn point (if exists) to current mouse position
+    if (curr_point_set.size() > 0)
+    {
+        line(image_with_structure_line, curr_point_set.back(), pt_curr, Scalar(85, 85, 255), 2);
+    }
+
+    imshow("Structure Propagation", image_with_structure_line);
+}
+
+void getDensePointSet(const vector<vector<Point>> &structure_line_set, vector<vector<Point>> &out)
+{
+    for (vector<Point> point_set : structure_line_set)
+    {
+        for (int i = 0; i < (int)(point_set.size()) - 1; i++)
+        {
+            int abs_x = std::abs(point_set[i].x - point_set[i + 1].x);
+            int abs_y = std::abs(point_set[i].y - point_set[i + 1].y);
+            int sign_x = point_set[i].x < point_set[i + 1].x ? 1 : -1;
+            int sign_y = point_set[i].y < point_set[i + 1].y ? 1 : -1;
+
+            // in case a "line" begin and end at the same pixel
+            if (point_set[i].x != point_set[i + 1].x && point_set[i].y != point_set[i + 1].y)
+            {
+                vector<Point> point_samples;
+                // sample the line with a step of 1 pixel
+                if (abs_y > abs_x)
+                {
+                    double slope_y = (double)(point_set[i + 1].x - point_set[i].x) / (point_set[i + 1].y - point_set[i].y);
+                    for (int dy = 0; dy < abs_y; dy++)
+                    {
+                        int y = sign_y * dy + point_set[i].y;
+                        int x = slope_y * sign_y * dy + point_set[i].x;
+                        point_samples.emplace_back(x, y);
+                    }
+                }
+                else
+                {
+                    double slope_x = (double)(point_set[i + 1].y - point_set[i].y) / (point_set[i + 1].x - point_set[i].x);
+                    for (int dx = 0; dx < abs_x; dx++)
+                    {
+                        int x = sign_x * dx + point_set[i].x;
+                        int y = slope_x * sign_x * dx + point_set[i].y;
+                        point_samples.emplace_back(x, y);
+                    }
+                }
+                out.emplace_back(vector<Point>(point_samples));
+            }
+        }
+    }
+}
+
+void structurePropagation()
+{
+
+    namedWindow("Structure Propagation");
+    createTrackbar("Block Size", "Structure Propagation", &block_size, 50);
+    createTrackbar("Sample Step", "Structure Propagation", &sample_step, 20);
+    createTrackbar("Line or Curve", "Structure Propagation", &line_or_curve, 1);
+    imshow("Structure Propagation", image_with_mask);
+    setMouseCallback("Structure Propagation", structurePropagationMouseCallBack);
+
+    vector<vector<Point>> dense_point_set;
+    char c = waitKey(0);
+    switch (c)
+    {
+    case 's':
+        getDensePointSet(structure_line_set, dense_point_set);
+        // TODO: structure propagation
+        break;
+    }
+
+    destroyWindow("Structure Propagation");
+}
+
+int main(int argc, char **argv)
+{
+    // read source
+    if (argc != 3)
+    {
+        std::cout << "Usage: ./main image_path save_path" << endl;
+        return 0;
+    }
+    image_path = argv[1];
+    save_path = argv[2];
+    image_src = imread(image_path);
+
+    if (image_src.empty())
+    {
+        std::cout << "Image is empty!" << endl;
+        return 0;
+    }
+
+    drawMask();
+    structurePropagation();
+
+    waitKey(0);
+    return 0;
 }
