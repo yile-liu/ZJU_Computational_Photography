@@ -29,7 +29,7 @@ void StructurePropagation::SetParam(int block_size, int sample_step, int line_or
  * @param plist 			list of sample points along structure line/curve
  * @param result 			img after structure propagation
  */
-void StructurePropagation::Run(const Mat &mask, const Mat& img, Mat &mask_structure, vector<vector<Point>> &plist, Mat& result)
+void StructurePropagation::Run(const Mat &mask, const Mat &img, Mat &mask_structure, vector<vector<Point>> &plist, Mat &result)
 {
 	Mat grayMat = Mat::zeros(img.rows, img.cols, CV_8UC1);
 	cvtColor(img, grayMat, COLOR_BGR2GRAY);
@@ -133,7 +133,7 @@ int *StructurePropagation::DP(const vector<PointPos> &samplePoints, vector<Point
 	}
 
 	// last anchor point
-	int *sampleIndices = (int*)malloc(anchorPoints.size() * sizeof(int));
+	int *sampleIndices = (int *)malloc(anchorPoints.size() * sizeof(int));
 	double min = INT_MAX;
 	for (int xi = 0; xi < samplePoints.size(); xi++)
 	{
@@ -165,7 +165,7 @@ int *StructurePropagation::DP(const vector<PointPos> &samplePoints, vector<Point
 double StructurePropagation::computeEs(const PointPos &i, const PointPos &xi)
 {
 	// get points of curve segment contained in patch
-	list<Point*> begin1, begin2;
+	list<Point *> begin1, begin2;
 	list<int> length1, length2;
 	pointManager.getPointsinPatch(i, begin1, length1);
 	pointManager.getPointsinPatch(xi, begin2, length2);
@@ -198,7 +198,7 @@ double StructurePropagation::computeEs(const PointPos &i, const PointPos &xi)
 	int offsetx = pxi.x - pi.x;
 	int offsety = pxi.y - pi.y;
 	list<int>::iterator lenItor1, lenItor2;
-	list<Point*>::iterator pointItor1, pointItor2;
+	list<Point *>::iterator pointItor1, pointItor2;
 
 	// compute minimal distance
 	for (lenItor1 = length1.begin(), pointItor1 = begin1.begin(); lenItor1 != length1.end(); lenItor1++, pointItor1++)
@@ -362,7 +362,7 @@ double StructurePropagation::computeE2(const Mat &mat, const PointPos &i1, const
  */
 int *StructurePropagation::BP(const vector<PointPos> &samplePoints, vector<PointPos> &anchorPoints, const Mat &mat)
 {
-	//initialization
+	// initialization
 	int size = pointManager.getPropstackSize();
 	anchorPoints.clear();
 	anchorPoints.reserve(size);
@@ -381,8 +381,8 @@ int *StructurePropagation::BP(const vector<PointPos> &samplePoints, vector<Point
 		computeMij(*n, n->getEdgeBegin(), mat, samplePoints);
 	}
 
-	auto *sampleIndices = (int*)malloc(size * sizeof(int));
-	auto *cur = (double*)malloc(samplePoints.size() * sizeof(double));
+	auto *sampleIndices = (int *)malloc(size * sizeof(int));
+	auto *cur = (double *)malloc(samplePoints.size() * sizeof(double));
 
 	list<shared_ptr<MyNode>>::reverse_iterator rev_itor;
 	list<shared_ptr<MyNode>>::reverse_iterator rev_end;
@@ -468,7 +468,7 @@ void StructurePropagation::computeMij(MyNode &n, const list<shared_ptr<Edge>>::i
 
 	if (*Mptr == nullptr)
 	{
-		*Mptr = (double*)malloc(samplePoints.size() * sizeof(double));
+		*Mptr = (double *)malloc(samplePoints.size() * sizeof(double));
 		memset(*Mptr, 0, samplePoints.size() * sizeof(double));
 
 		for (int i = 0; i < samplePoints.size(); i++)
@@ -506,7 +506,7 @@ void StructurePropagation::computeMij(MyNode &n, const list<shared_ptr<Edge>>::i
 
 void StructurePropagation::getResult(Mat mask, int *sampleIndices, const vector<PointPos> &samplePoints, vector<PointPos> &anchorPoints, Mat &result)
 {
-	vector<vector<int> > tmp_mask(mask.rows, vector<int>(mask.cols, 0));
+	vector<vector<int>> tmp_mask(mask.rows, vector<int>(mask.cols, 0));
 	for (int i = 0; i < mask.rows; i++)
 	{
 		for (int j = 0; j < mask.cols; j++)
@@ -536,7 +536,7 @@ void StructurePropagation::getResult(Mat mask, int *sampleIndices, const vector<
 		for (int m = -offset1; m < offset2; m++)
 		{
 			int tary = tar.y + m;
-			const Vec3b* srcPtr = result.ptr<Vec3b>(src.y + m);
+			const Vec3b *srcPtr = result.ptr<Vec3b>(src.y + m);
 			for (int n = -offset1; n < offset2; n++)
 			{
 				Vec3b tmp = result.at<Vec3b>(tar.y + m, tar.x + n);
@@ -548,8 +548,8 @@ void StructurePropagation::getResult(Mat mask, int *sampleIndices, const vector<
 				else
 				{
 					result.at<Vec3b>(tar.y + m, tar.x + n) = AlphaBlending(srcPtr[src.x + n], result.at<Vec3b>(tar.y + m, tar.x + n), 0.5);
-//                    result.at<Vec3b>(tar.y + m, tar.x + n) = patch.at<Vec3b>(m + offset1, n + offset1);
-//                    result.at<Vec3b>(tar.y + m, tar.x + n) = AlphaBlending(patch.at<Vec3b>(m + offset1, n + offset1), result.at<Vec3b>(tar.y + m, tar.x + n), 0.5);
+					//                    result.at<Vec3b>(tar.y + m, tar.x + n) = patch.at<Vec3b>(m + offset1, n + offset1);
+					//                    result.at<Vec3b>(tar.y + m, tar.x + n) = AlphaBlending(patch.at<Vec3b>(m + offset1, n + offset1), result.at<Vec3b>(tar.y + m, tar.x + n), 0.5);
 				}
 			}
 		}

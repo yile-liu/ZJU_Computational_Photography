@@ -11,143 +11,171 @@
 using namespace std;
 using namespace cv;
 
-class Endpoints {
+class Endpoints
+{
 public:
 	int trueLineIndex;
 	int startIndex;
 	int endIndex;
 };
 
-class PointPos {
+class PointPos
+{
 public:
 	int lineIndex;
 	int pointIndex;
 
-	PointPos(int lineIndex = -1, int pointIndex = -1) : lineIndex(lineIndex), pointIndex(pointIndex) {
+	PointPos(int lineIndex = -1, int pointIndex = -1) : lineIndex(lineIndex), pointIndex(pointIndex)
+	{
 	}
 };
 
 class Edge;
 
-class MyNode {
+class MyNode
+{
 private:
 	list<shared_ptr<Edge>> edges;
 	int edgeNum;
+
 public:
 	const PointPos p;
 	const ushort id;
 	static ushort totalNum;
 
-	MyNode(PointPos p) : p(p), id(++totalNum) {
+	MyNode(PointPos p) : p(p), id(++totalNum)
+	{
 		edgeNum = 0;
 	}
-	void push_front(const shared_ptr<Edge> &e) {
+	void push_front(const shared_ptr<Edge> &e)
+	{
 		edges.push_front(e);
 		edgeNum++;
 	}
-	void push_back(const shared_ptr<Edge> &e) {
+	void push_back(const shared_ptr<Edge> &e)
+	{
 		edges.push_back(e);
 		edgeNum++;
 	}
-	void eraseEdge(shared_ptr<Edge> &e) {
+	void eraseEdge(shared_ptr<Edge> &e)
+	{
 		edges.remove(e);
 		edges.push_back(e);
 		edgeNum--;
 	}
-	list<shared_ptr<Edge>>::iterator getEdgeBegin() {
+	list<shared_ptr<Edge>>::iterator getEdgeBegin()
+	{
 		return edges.begin();
 	}
-	list<shared_ptr<Edge>>::iterator getEdgeEnd() {
+	list<shared_ptr<Edge>>::iterator getEdgeEnd()
+	{
 		return edges.end();
 	}
-	void getEdges(list<shared_ptr<Edge>> &edges) {
+	void getEdges(list<shared_ptr<Edge>> &edges)
+	{
 		edges = this->edges;
 	}
-	int getEdgeNum() {
+	int getEdgeNum()
+	{
 		return edgeNum;
 	}
 };
 
-class Edge {
+class Edge
+{
 private:
 	double *Mij;
 	double *Mji;
+
 public:
 	ushort ni;
 	ushort nj;
 
-	Edge(ushort ni, ushort nj) : ni(ni), nj(nj) {
+	Edge(ushort ni, ushort nj) : ni(ni), nj(nj)
+	{
 		Mij = Mji = nullptr;
 	}
 
-	Edge() {
+	Edge()
+	{
 		Mij = Mji = nullptr;
 	}
 
-	inline ushort getAnother(ushort n) {
-		if (n == ni) {
+	inline ushort getAnother(ushort n)
+	{
+		if (n == ni)
+		{
 			return nj;
 		}
-		else {
+		else
+		{
 			return ni;
 		}
 	}
 
-	inline double **getMbyFrom(ushort from) {
-		if (from == ni) {
+	inline double **getMbyFrom(ushort from)
+	{
+		if (from == ni)
+		{
 			return &Mij;
 		}
-		else {
+		else
+		{
 			return &Mji;
-		}
-
-	}
-
-	inline double **getMbyTo(ushort to) {
-		if (to == ni) {
-			return &Mji;
-		}
-		else  {
-			return &Mij;
 		}
 	}
 
+	inline double **getMbyTo(ushort to)
+	{
+		if (to == ni)
+		{
+			return &Mji;
+		}
+		else
+		{
+			return &Mij;
+		}
+	}
 };
 
-class PointManager {
+class PointManager
+{
 public:
 	PointManager() = default;
 	void reset(const vector<vector<Point>> &linePoints, const Mat1b &mask, int blockSize, set<shared_ptr<list<int>>> &lineSets);
 	Point getPoint(PointPos p);
 	bool nearBoundary(PointPos p);
 	void getPointsinPatch(PointPos p, vector<Point> &ret);
-	void getPointsinPatch(const PointPos &p, list<Point*> &begin, list<int> &length);
+	void getPointsinPatch(const PointPos &p, list<Point *> &begin, list<int> &length);
 	void getSamplePoints(vector<PointPos> &samples, int sampleStep, list<int> &line);
 	void getSamplePoints(vector<PointPos> &samples, int sampleStep);
 	void constructBPMap(list<int> &line);
 	void getAnchorPoints(vector<PointPos> &anchors, list<int> &line);
 	void getPropstackItor(list<shared_ptr<MyNode>>::iterator &begin, list<shared_ptr<MyNode>>::iterator &end);
 	void getPropstackReverseItor(list<shared_ptr<MyNode>>::reverse_iterator &begin, list<shared_ptr<MyNode>>::reverse_iterator &end);
-	int getPropstackSize() {
+	int getPropstackSize()
+	{
 		return propagationStack.size();
 	}
-	PointPos getPointPos(ushort id) {
+	PointPos getPointPos(ushort id)
+	{
 		return (*nodes[id])->p;
 	}
-	shared_ptr<MyNode> getNode(ushort id) {
+	shared_ptr<MyNode> getNode(ushort id)
+	{
 		return *nodes[id];
 	}
 
 private:
-	vector<vector<Point>> linePoints; //¼ÇÂ¼ÓÃ»§»æÖÆµÄµãµÄÐÅÏ¢
+	vector<vector<Point>> linePoints; // ï¿½ï¿½Â¼ï¿½Ã»ï¿½ï¿½ï¿½ï¿½ÆµÄµï¿½ï¿½ï¿½ï¿½Ï¢
 	Mat1b mask;
 	int blockSize;
-	vector<Endpoints> lineEnds; //ÓÃÓÚ¼ÇÂ¼¾­¹ýPointManagerÔÙ´Î»®·ÖºóµÄÏß¶ÎµÄÊ×Î²ÐÅÏ¢
-	set<PointPos> boundaryPoints; //ÓÃÓÚ¼ÇÂ¼ËùÔÚpatchÓë±ß½çÖØµþµÄÃªµã
-	map<int, list<PointPos>> intersectingMap; //ÓÃÓÚ¼ÇÂ¼½»µã£¬¼üÖµÎª¸ù¾Ý½»µãµÄÕæÊµ×ø±ê¼ÆËã³öµÄhashÖµ
+	vector<Endpoints> lineEnds;				  // ï¿½ï¿½ï¿½Ú¼ï¿½Â¼ï¿½ï¿½ï¿½ï¿½PointManagerï¿½Ù´Î»ï¿½ï¿½Öºï¿½ï¿½ï¿½ß¶Îµï¿½ï¿½ï¿½Î²ï¿½ï¿½Ï¢
+	set<PointPos> boundaryPoints;			  // ï¿½ï¿½ï¿½Ú¼ï¿½Â¼ï¿½ï¿½ï¿½ï¿½patchï¿½ï¿½ß½ï¿½ï¿½Øµï¿½ï¿½ï¿½Ãªï¿½ï¿½
+	map<int, list<PointPos>> intersectingMap; // ï¿½ï¿½ï¿½Ú¼ï¿½Â¼ï¿½ï¿½ï¿½ã£¬ï¿½ï¿½ÖµÎªï¿½ï¿½ï¿½Ý½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Êµï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½hashÖµ
 	map<int, list<PointPos>> outIntersectingMap;
-	vector<list<shared_ptr<MyNode>>::iterator> nodes; //Ò»ÕÅ¸ù¾ÝNode id²éÕÒnodeµÄ±í£¬¼ÇÂ¼×ÅNode¶ÔÏóÔÚË«ÏòÁ´±íÖÐµÄµü´úÆ÷
-	list<shared_ptr<MyNode>> propagationStack; //¼ÇÂ¼BPËã·¨ÖÐÐÅÏ¢´«µÝµÄË³Ðò
+	vector<list<shared_ptr<MyNode>>::iterator> nodes; // Ò»ï¿½Å¸ï¿½ï¿½ï¿½Node idï¿½ï¿½ï¿½ï¿½nodeï¿½Ä±ï¿½ï¿½ï¿½ï¿½ï¿½Â¼ï¿½ï¿½Nodeï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ë«ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ÐµÄµï¿½ï¿½ï¿½ï¿½ï¿½
+	list<shared_ptr<MyNode>> propagationStack;		  // ï¿½ï¿½Â¼BPï¿½ã·¨ï¿½ï¿½ï¿½ï¿½Ï¢ï¿½ï¿½ï¿½Ýµï¿½Ë³ï¿½ï¿½
 
 	bool nearBoundary(const Point &p, bool isSample);
 	int calcHashValue(int x, int y);

@@ -2,7 +2,6 @@
 
 Implementation of 2005 SIGGRAPH paper [J. Sun et al. Image completion with structure propagation.](https://www.microsoft.com/en-us/research/wp-content/uploads/2016/02/siggraph05_0265_final.pdf)
 
-
 Code skeleton comes from [here](http://www.cad.zju.edu.cn/home/gfzhang/course/computational-photography/proj2-completion/completion.html).
 
 **Collaborators:**
@@ -18,21 +17,19 @@ Contributed by Jessie Peng
   - choose input image
   - draw mask
   - draw structure lines/curve
-  
 - [x] Structure propagation
   - single line
   - multiple lines
   - curve
-  
 - [x] Photometric correction (copied from [https://github.com/ruanjiayi](https://github.com/ruanjiayi/Image-Completion-with-Structure-Propagation))
 
 ### Files
 
-*cmake-build-debug/sp_result*: output after structure propagation
+_cmake-build-debug/sp_result_: output after structure propagation
 
-*cmake-build-debug/ts_result*: output after texture synthesis
+_cmake-build-debug/ts_result_: output after texture synthesis
 
-*cmake-build-debug/mask_structure*: mask of structures
+_cmake-build-debug/mask_structure_: mask of structures
 
 ### Evironment
 
@@ -44,7 +41,7 @@ Contributed by Jessie Peng
 
 Contributed by Xiu
 
-Demo video in [weibo](https://m.weibo.cn/status/4380715229967145?wm=3333_2001&from=1095193010&sourcetype=qq&featurecode=newtitle) 
+Demo video in [weibo](https://m.weibo.cn/status/4380715229967145?wm=3333_2001&from=1095193010&sourcetype=qq&featurecode=newtitle)
 (Watching with your phone will be better)
 
 ### Evironment

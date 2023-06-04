@@ -10,7 +10,7 @@ using namespace std;
 using namespace cv;
 
 void LineInterpolation(Point points[2], vector<Point> &PointList);
-void GetCurve(const vector<Point>& mouse_points, vector<Point> &PointList);
+void GetCurve(const vector<Point> &mouse_points, vector<Point> &PointList);
 
 inline void DrawPoints(vector<Point> PointList, Mat &img, Scalar color, int r)
 {

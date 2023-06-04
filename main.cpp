@@ -208,6 +208,10 @@ void structurePropagation()
         getDensePointSet(structure_line_set, dense_point_set);
         // TODO: structure propagation
         break;
+
+    case 't':
+        // TODO: texture propagation
+        break;
     }
 
     destroyWindow("Structure Propagation");

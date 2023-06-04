@@ -11,11 +11,11 @@
 #define M_BORDER 2
 #define M_BOUNDARY 3
 
-int offset_t[4][2] = { {1,0},{-1,0},{0,1},{0,-1} };
+int offset_t[4][2] = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
 // local offset: + offset
-#define L_OFFSET(i) (y+offset_t[i][0]),(x+offset_t[i][1])
+#define L_OFFSET(i) (y + offset_t[i][0]), (x + offset_t[i][1])
 // mask offset: + patch pos + 1 + offset
-#define M_OFFSET(i) (y+offset_y+offset_t[i][0]),(x+offset_x+offset_t[i][1])
+#define M_OFFSET(i) (y + offset_y + offset_t[i][0]), (x + offset_x + offset_t[i][1])
 
 // init
 Mat Photometric::mask;
@@ -36,7 +36,7 @@ void Photometric::initMask(Mat image, Mat imageMask, uchar unknown, uchar known)
 	mask = Mat(imageMask.size().height, imageMask.size().width, CV_8U);
 	// update mask, treat unknown region as border
 	mask.setTo(Scalar(unknown));
-	//imageMask.copyTo(mask(roi));
+	// imageMask.copyTo(mask(roi));
 	imageMask.copyTo(mask);
 	Mat unknown_roi = mask == unknown;
 	Mat known_roi = mask == known;
@@ -86,7 +86,7 @@ void Photometric::correctE(Mat &patch, int offset_x, int offset_y)
 	}
 	Eigen::SparseMatrix<double> A;
 	Eigen::VectorXd b[3], sol[3];
-	int total = (height - 2)*(width - 2);
+	int total = (height - 2) * (width - 2);
 	A = Eigen::SparseMatrix<double>(total, total);
 	A.reserve(Eigen::VectorXd::Constant(total, 5));
 	for (i = 0; i < 3; i++)
