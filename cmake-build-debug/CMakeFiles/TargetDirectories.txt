@@ -1,3 +1,0 @@
-/home/lyl/Desktop/Computational_Photography/cmake-build-debug/CMakeFiles/ImageCompletion.dir
-/home/lyl/Desktop/Computational_Photography/cmake-build-debug/CMakeFiles/edit_cache.dir
-/home/lyl/Desktop/Computational_Photography/cmake-build-debug/CMakeFiles/rebuild_cache.dir
