@@ -14,18 +14,18 @@ using namespace cv;
 class Endpoints
 {
 public:
-	int trueLineIndex;
-	int startIndex;
-	int endIndex;
+	int true_line_index;
+	int start_index;
+	int end_index;
 };
 
 class PointPos
 {
 public:
-	int lineIndex;
-	int pointIndex;
+	int line_index;
+	int point_index;
 
-	PointPos(int lineIndex = -1, int pointIndex = -1) : lineIndex(lineIndex), pointIndex(pointIndex)
+	explicit PointPos(int lineIndex = -1, int pointIndex = -1) : line_index(lineIndex), point_index(pointIndex)
 	{
 	}
 };
@@ -36,32 +36,32 @@ class MyNode
 {
 private:
 	list<shared_ptr<Edge>> edges;
-	int edgeNum;
+	int edge_num;
 
 public:
 	const PointPos p;
 	const ushort id;
-	static ushort totalNum;
+	static ushort total_num;
 
-	MyNode(PointPos p) : p(p), id(++totalNum)
+	explicit MyNode(PointPos p) : p(p), id(++total_num)
 	{
-		edgeNum = 0;
+		edge_num = 0;
 	}
 	void push_front(const shared_ptr<Edge> &e)
 	{
 		edges.push_front(e);
-		edgeNum++;
+		edge_num++;
 	}
 	void push_back(const shared_ptr<Edge> &e)
 	{
 		edges.push_back(e);
-		edgeNum++;
+		edge_num++;
 	}
 	void eraseEdge(shared_ptr<Edge> &e)
 	{
 		edges.remove(e);
 		edges.push_back(e);
-		edgeNum--;
+		edge_num--;
 	}
 	list<shared_ptr<Edge>>::iterator getEdgeBegin()
 	{
@@ -75,9 +75,9 @@ public:
 	{
 		edges = this->edges;
 	}
-	int getEdgeNum()
+	int getEdgeNum() const
 	{
-		return edgeNum;
+		return edge_num;
 	}
 };
 
@@ -88,8 +88,8 @@ private:
 	double *Mji;
 
 public:
-	ushort ni;
-	ushort nj;
+	ushort ni{};
+	ushort nj{};
 
 	Edge(ushort ni, ushort nj) : ni(ni), nj(nj)
 	{
@@ -101,7 +101,7 @@ public:
 		Mij = Mji = nullptr;
 	}
 
-	inline ushort getAnother(ushort n)
+	inline ushort getAnother(ushort n) const
 	{
 		if (n == ni)
 		{
@@ -142,44 +142,39 @@ class PointManager
 {
 public:
 	PointManager() = default;
-	void reset(const vector<vector<Point>> &linePoints, const Mat1b &mask, int blockSize, set<shared_ptr<list<int>>> &lineSets);
+	void init(const vector<vector<Point>> &structure_lines, const Mat1b &mask, int block_size, set<shared_ptr<list<int>>> &line_sets);
 	Point getPoint(PointPos p);
 	bool nearBoundary(PointPos p);
-	void getPointsinPatch(PointPos p, vector<Point> &ret);
-	void getPointsinPatch(const PointPos &p, list<Point *> &begin, list<int> &length);
-	void getSamplePoints(vector<PointPos> &samples, int sampleStep, list<int> &line);
-	void getSamplePoints(vector<PointPos> &samples, int sampleStep);
-	void constructBPMap(list<int> &line);
-	void getAnchorPoints(vector<PointPos> &anchors, list<int> &line);
-	void getPropstackItor(list<shared_ptr<MyNode>>::iterator &begin, list<shared_ptr<MyNode>>::iterator &end);
-	void getPropstackReverseItor(list<shared_ptr<MyNode>>::reverse_iterator &begin, list<shared_ptr<MyNode>>::reverse_iterator &end);
-	int getPropstackSize()
+	void getPointsInPatch(const PointPos &p, list<Point *> &begin, list<int> &length);
+	void getKnownPoint(vector<PointPos> &samples, int sample_step, list<int> &line);
+	void constructBpMap(list<int> &line);
+	void getUnknownPoint(vector<PointPos> &anchors, list<int> &line);
+	void getStackIter(list<shared_ptr<MyNode>>::iterator &begin, list<shared_ptr<MyNode>>::iterator &end);
+	void getStackReverseIter(list<shared_ptr<MyNode>>::reverse_iterator &begin, list<shared_ptr<MyNode>>::reverse_iterator &end);
+	int getStackSize()
 	{
-		return propagationStack.size();
+		return propagation_stack.size();
 	}
 	PointPos getPointPos(ushort id)
 	{
 		return (*nodes[id])->p;
 	}
-	shared_ptr<MyNode> getNode(ushort id)
-	{
-		return *nodes[id];
-	}
+
 
 private:
-	vector<vector<Point>> linePoints; // ��¼�û����Ƶĵ����Ϣ
+	vector<vector<Point>> structure_line_points; // 记录用户绘制的点的信息
 	Mat1b mask;
-	int blockSize;
-	vector<Endpoints> lineEnds;				  // ���ڼ�¼����PointManager�ٴλ��ֺ���߶ε���β��Ϣ
-	set<PointPos> boundaryPoints;			  // ���ڼ�¼����patch��߽��ص���ê��
-	map<int, list<PointPos>> intersectingMap; // ���ڼ�¼���㣬��ֵΪ���ݽ������ʵ����������hashֵ
-	map<int, list<PointPos>> outIntersectingMap;
-	vector<list<shared_ptr<MyNode>>::iterator> nodes; // һ�Ÿ���Node id����node�ı�����¼��Node������˫�������еĵ�����
-	list<shared_ptr<MyNode>> propagationStack;		  // ��¼BP�㷨����Ϣ���ݵ�˳��
+	int block_size{};
+	vector<Endpoints> line_ends;			// 用于记录经过PointManager再次划分后的线段的首尾信息
+	set<PointPos> boundary_points;			// 用于记录所在patch与边界重叠的锚点
+	map<int, list<PointPos>> intersect_map; // 用于记录交点，键值为根据交点的真实坐标计算出的hash值
+	map<int, list<PointPos>> out_intersect_map;
+	vector<list<shared_ptr<MyNode>>::iterator> nodes; // 一张根据Node id查找node的表，记录着Node对象在双向链表中的迭代器
+	list<shared_ptr<MyNode>> propagation_stack;		  // 记录BP算法中信息传递的顺序
 
-	bool nearBoundary(const Point &p, bool isSample);
-	int calcHashValue(int x, int y);
-	int addNeighbor(MyNode &n, const PointPos &pos, vector<vector<ushort>> &visitedMark, list<shared_ptr<MyNode>> &neighbors);
+	bool nearBoundary(const Point &p, bool is_sample);
+	int getHashValue(int x, int y);
+	int addNeighbor(MyNode &n, const PointPos &pos, vector<vector<ushort>> &visited_points, list<shared_ptr<MyNode>> &bfs_stack);
 };
 
 #endif /* POINT_MANAGER_H */

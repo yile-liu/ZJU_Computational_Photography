@@ -17,7 +17,7 @@ public:
 	StructurePropagation() = default;
 	~StructurePropagation() = default;
 	void SetParam(int block_size, int sample_step, int line_or_curve, double ks, double ki);
-	void Run(const Mat &mask, const Mat &img, Mat &mask_structure, vector<vector<Point>> &plist, Mat &result);
+	void Run(const Mat &mask, const Mat &img_masked, Mat &mask_structure, vector<vector<Point>> &plist, Mat &result);
 
 private:
 	int block_size;
@@ -25,15 +25,15 @@ private:
 	int line_or_curve;
 	double ks;
 	double ki;
-	PointManager pointManager;
+	PointManager point_manager;
 
-	int *DP(const vector<PointPos> &samplePoints, vector<PointPos> &anchorPoints, const Mat &mat);
+	int *DP(const vector<PointPos> &sample_points, vector<PointPos> &anchor_points, const Mat &image_src_grey);
 	double computeEs(const PointPos &i, const PointPos &xi);
-	double computeEi(const Mat &mat, const PointPos &i, const PointPos &xi);
-	double computeE2(const Mat &mat, const PointPos &i1, const PointPos &i2, const PointPos &xi1, const PointPos &xi2);
-	int *BP(const vector<PointPos> &samplePoints, vector<PointPos> &anchorPoints, const Mat &mat);
-	void computeMij(MyNode &n, const list<shared_ptr<Edge>>::iterator &edgeItor, const Mat &mat, const vector<PointPos> &samplePoints);
-	void getResult(Mat mask, int *sampleIndices, const vector<PointPos> &samplePoints, vector<PointPos> &anchorPoints, Mat &result);
+	double computeEi(const Mat &image_src, const PointPos &i, const PointPos &xi);
+	double computeE2(const Mat &image_src, const PointPos &i1, const PointPos &i2, const PointPos &xi1, const PointPos &xi2);
+	int *BP(const vector<PointPos> &sample_points, const Mat &mat);
+	void computeMij(MyNode &n, const list<shared_ptr<Edge>>::iterator &edge_itor, const Mat &mat, const vector<PointPos> &sample_points);
+	void getResult(Mat mask, int *sample_indices, const vector<PointPos> &sample_points, vector<PointPos> &anchor_points, Mat &result);
 };
 
 #endif /* STRUCTURE_PROPAGATION_H */

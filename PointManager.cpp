@@ -4,11 +4,11 @@
 #define getPointIndex(x) (x - 1) << 8 >> 8
 #define visit(l, p) ((l << 24) | (p + 1))
 
-ushort MyNode::totalNum = 0;
+ushort MyNode::total_num = 0;
 
 bool operator<(const PointPos &p1, const PointPos &p2)
 {
-	return (p1.lineIndex == p2.lineIndex) ? p1.pointIndex < p2.pointIndex : p1.lineIndex < p2.lineIndex;
+	return (p1.line_index == p2.line_index) ? p1.point_index < p2.point_index : p1.line_index < p2.line_index;
 }
 
 bool operator==(const Edge &e1, const Edge &e2)
@@ -16,289 +16,226 @@ bool operator==(const Edge &e1, const Edge &e2)
 	return (e1.ni == e2.ni) & (e1.nj == e2.nj);
 }
 
-void PointManager::reset(const vector<vector<Point>> &linePoints, const Mat1b &mask, int blockSize, set<shared_ptr<list<int>>> &lineSets)
+/// set parameters for the PointManager and contert the structure_lines to line_set
+void PointManager::init(const vector<vector<Point>> &structure_lines, const Mat1b &mask, int block_size, set<shared_ptr<list<int>>> &line_set)
 {
-	// clean up the remnant data
-	this->linePoints = linePoints;
+	// clean old data
+	this->structure_line_points = structure_lines;
 	this->mask = mask;
-	this->blockSize = blockSize;
-	lineEnds.clear();
-	boundaryPoints.clear();
-	intersectingMap.clear();
-	outIntersectingMap.clear();
+	this->block_size = block_size;
+	line_ends.clear();
+	boundary_points.clear();
+	intersect_map.clear();
+	out_intersect_map.clear();
 
-	// do preparation for the following operation
-	Mat visitMat = Mat::zeros(mask.rows, mask.cols, CV_32SC1);
-	bool inMask = false;
+	Mat visited_map = Mat::zeros(mask.rows, mask.cols, CV_32SC1);
+	bool was_in_mask = false;   // indicate whether the previous point is in the mask area
 	Endpoints endpoints;
-	for (int j = 0; j < linePoints.size(); j++)
+
+    // traverse structure lines
+	for (int j = 0; j < structure_lines.size(); j++)
 	{
+        // traverse points on a line
 		int i;
-		for (i = 0; i < linePoints[j].size(); i++)
+		for (i = 0; i < structure_lines[j].size(); i++)
 		{
-			int y = linePoints[j][i].y;
-			int x = linePoints[j][i].x;
-			if (y < 0 || y >= mask.rows || x < 0 || x >= mask.cols)
+			int y = structure_lines[j][i].y;
+			int x = structure_lines[j][i].x;
+			// 1.1 corner case: out of image border
+            if (y < 0 || y >= mask.rows || x < 0 || x >= mask.cols)
 			{
 				continue;
 			}
+            // 1.2 current point is outside the mask
 			else if (mask.at<uchar>(y, x))
 			{
-				// current line get out of the mask area, end this line
-				if (inMask == true)
+				// previous point is inside the mask, then the current point is the end of a line
+				if (was_in_mask)
 				{
-					if (nearBoundary(linePoints[j][i], true))
+					if (nearBoundary(structure_lines[j][i], true))
 					{
-						boundaryPoints.insert(PointPos(lineEnds.size(), i));
+						boundary_points.insert(PointPos(line_ends.size(), i));
 					}
 					else
 					{
-						endpoints.endIndex = i;
-						lineEnds.push_back(endpoints);
-						inMask = false;
+						endpoints.end_index = i;
+						line_ends.push_back(endpoints);
+                        was_in_mask = false;
 					}
-					endpoints.endIndex = i;
-					lineEnds.push_back(endpoints);
-					inMask = false;
-				}
-				int visitRecord = visitMat.at<int>(y, x);
-				int lineIndex = getLineIndex(visitRecord);
-				int pointIndex = getPointIndex(visitRecord);
-				// check if this point is an intersection^M
-				if (visitRecord != 0 && lineIndex != lineEnds.size())
-				{
-					// record the position info of overlapping points in the intersectingMap^M
-					list<PointPos> *intersectingList = &outIntersectingMap[calcHashValue(x, y)];
-					if (intersectingList->size() == 0)
-					{
-						intersectingList->push_back(PointPos(lineIndex, pointIndex));
-					}
-					intersectingList->push_back(PointPos(j, i));
-				}
-				else
-				{
-					// mark the point as visited
-					visitMat.at<int>(y, x) = visit(j, i);
+					endpoints.end_index = i;
+					line_ends.push_back(endpoints);
+                    was_in_mask = false;
 				}
 			}
+            // 1.3 current point is inside the mask
 			else
 			{
-				// current patch crosses the boundary between img and mask
-				if (nearBoundary(linePoints[j][i], false))
+                // previous point is outside the mask, the current point is the start of a line
+                if (!was_in_mask)
+                {
+                    endpoints.start_index = i;
+                    endpoints.true_line_index = j;
+                    was_in_mask = true;
+                }
+
+				// mark this point if it is near the boundary
+				if (nearBoundary(structure_lines[j][i], false))
 				{
-					boundaryPoints.insert(PointPos(lineEnds.size(), i));
-				}
-				// current line get into mask area, start a new line
-				if (inMask == false)
-				{
-					endpoints.startIndex = i;
-					endpoints.trueLineIndex = j;
-					inMask = true;
-				}
-				int visitRecord = visitMat.at<int>(y, x);
-				int lineIndex = getLineIndex(visitRecord);
-				int pointIndex = getPointIndex(visitRecord);
-				// check if this point is an intersection
-				if (visitRecord != 0 && lineIndex != lineEnds.size())
-				{
-					// record the position info of overlapping points in the intersectingMap
-					list<PointPos> *intersectingList = &intersectingMap[calcHashValue(x, y)];
-					if (intersectingList->size() == 0)
-					{
-						intersectingList->push_back(PointPos(lineIndex, pointIndex));
-					}
-					intersectingList->push_back(PointPos(lineEnds.size(), i));
-				}
-				else
-				{
-					// mark the point as visited
-					visitMat.at<int>(y, x) = visit(lineEnds.size(), i);
+					boundary_points.insert(PointPos(line_ends.size(), i));
 				}
 			}
+
+            // 2.1 if the current point is visited, it is an intersection point
+            int visit_record = visited_map.at<int>(y, x);
+            int line_index = getLineIndex(visit_record);
+            int point_index = getPointIndex(visit_record);
+            if (visit_record != 0 && line_index != line_ends.size())
+            {
+                // record the position info of overlapping points in the intersect_map
+                list<PointPos> *intersect_list = &intersect_map[getHashValue(x, y)];
+                if (intersect_list->empty())
+                {
+                    intersect_list->push_back(PointPos(line_index, point_index));
+                }
+                intersect_list->push_back(PointPos(line_ends.size(), i));
+            }
+            // 2.2 if the current point is not visited, mark it
+            else
+            {
+                visited_map.at<int>(y, x) = visit(line_ends.size(), i);
+            }
 		}
-		// cope with the situation where line ends in mask area
-		if (inMask == true)
+
+		// handle if line ends in mask area
+		if (was_in_mask)
 		{
-			inMask = false;
-			endpoints.endIndex = i;
-			lineEnds.push_back(endpoints);
+            was_in_mask = false;
+			endpoints.end_index = i;
+			line_ends.push_back(endpoints);
 		}
 	}
 
-	vector<shared_ptr<list<int>>> lineSetRecord(lineEnds.size());
-	map<int, list<PointPos>>::iterator mapItor;
-	list<PointPos>::iterator listItor;
-	for (int i = 0; i < lineEnds.size(); i++)
+    // generate line_set based on how structure lines intersect
+	vector<shared_ptr<list<int>>> line_set_record(line_ends.size());
+	map<int, list<PointPos>>::iterator map_iter;
+	list<PointPos>::iterator list_iter;
+	for (int i = 0; i < line_ends.size(); i++)
 	{
 		shared_ptr<list<int>> ptr = make_shared<list<int>>();
 		ptr->push_back(i);
-		lineSetRecord[i] = ptr;
+		line_set_record[i] = ptr;
 	}
-	for (mapItor = intersectingMap.begin(); mapItor != intersectingMap.end(); mapItor++)
+	for (map_iter = intersect_map.begin(); map_iter != intersect_map.end(); map_iter++)
 	{
-		shared_ptr<list<int>> ptr = NULL;
-		for (listItor = mapItor->second.begin(); listItor != mapItor->second.end(); listItor++)
+		shared_ptr<list<int>> ptr = nullptr;
+		for (list_iter = map_iter->second.begin(); list_iter != map_iter->second.end(); list_iter++)
 		{
-			if (lineSetRecord[listItor->lineIndex] != NULL)
+			if (line_set_record[list_iter->line_index] != nullptr)
 			{
-				if (ptr == NULL)
+				if (ptr == nullptr)
 				{
-					ptr = lineSetRecord[listItor->lineIndex];
+					ptr = line_set_record[list_iter->line_index];
 				}
-				else
+				else // merge two lists
 				{
-					// merge two line sets
-					ptr->insert(ptr->end(), lineSetRecord[listItor->lineIndex]->begin(), lineSetRecord[listItor->lineIndex]->end());
+					ptr->insert(ptr->end(), line_set_record[list_iter->line_index]->begin(), line_set_record[list_iter->line_index]->end());
 				}
 			}
 		}
-		list<int>::iterator itor;
-		for (itor = ptr->begin(); itor != ptr->end(); itor++)
+		list<int>::iterator iter;
+		for (iter = ptr->begin(); iter != ptr->end(); iter++)
 		{
-			lineSetRecord[*itor] = ptr;
+			line_set_record[*iter] = ptr;
 		}
 	}
 
-	for (int i = 0; i < lineSetRecord.size(); i++)
+	for (int i = 0; i < line_set_record.size(); i++)
 	{
-		lineSets.insert(lineSetRecord[i]);
+		line_set.insert(line_set_record[i]);
 	}
 }
 
-bool PointManager::nearBoundary(const Point &p, bool isSample)
+bool PointManager::nearBoundary(const Point &p, bool is_sample)
 {
-	int leftBound = MAX(p.x - blockSize / 2, 0);
-	int rightBound = MIN(p.x + blockSize - blockSize / 2, mask.cols);
-	int upBound = MAX(p.y - blockSize / 2, 0);
-	int downBound = MIN(p.y + blockSize - blockSize / 2, mask.rows);
+	int leftBound = MAX(p.x - block_size / 2, 0);
+	int rightBound = MIN(p.x + block_size - block_size / 2, mask.cols);
+	int upBound = MAX(p.y - block_size / 2, 0);
+	int downBound = MIN(p.y + block_size - block_size / 2, mask.rows);
 	const uchar *upPtr = mask.ptr<uchar>(upBound);
 	const uchar *downPtr = mask.ptr<uchar>(downBound - 1);
+
 	// check if the mask boundary crosses up and down boundary of the patch
 	for (int i = leftBound; i < rightBound; i++)
 	{
-		if (!upPtr[i] == isSample || !downPtr[i] == isSample)
+		if (!upPtr[i] == is_sample || !downPtr[i] == is_sample)
 		{
 			return true;
 		}
 	}
+
 	// check if the mask boundary crosses left and right boundary of the patch
 	for (int i = upBound + 1; i < downBound - 1; i++)
 	{
-		if (!mask.at<uchar>(i, leftBound) == isSample || !mask.at<uchar>(i, rightBound - 1) == isSample)
+		if (!mask.at<uchar>(i, leftBound) == is_sample || !mask.at<uchar>(i, rightBound - 1) == is_sample)
 		{
 			return true;
 		}
 	}
+
 	return false;
 }
 
-inline int PointManager::calcHashValue(int x, int y)
+// get hash value of a point's coordinate
+inline int PointManager::getHashValue(int x, int y)
 {
-	// calculate the hash value of the visitedMap
 	return x + y * mask.cols;
 }
 
+// get Point Object by PointPos object
 inline Point PointManager::getPoint(PointPos p)
 {
-	// get Point Object by PointPos object
-	return linePoints[lineEnds[p.lineIndex].trueLineIndex][p.pointIndex];
+	return structure_line_points[line_ends[p.line_index].true_line_index][p.point_index];
 }
 
+// check if the patch crosses the boundary
 bool PointManager::nearBoundary(PointPos p)
 {
-	// check if the patch crosses the boundary
-	return boundaryPoints.count(p);
+	return boundary_points.count(p);
 }
 
-void PointManager::getPointsinPatch(PointPos p, vector<Point> &ret)
+// get all points of the line segment contained in this patch
+void PointManager::getPointsInPatch(const PointPos &p, list<Point *> &begin, list<int> &length)
 {
-	// get all points of the line segment contained in this patch
 	Point center = getPoint(p);
-	int leftBound = MAX(center.x - blockSize / 2, 0);
-	int rightBound = MIN(center.x + blockSize - blockSize / 2, mask.cols);
-	int upBound = MAX(center.y - blockSize / 2, 0);
-	int downBound = MIN(center.y + blockSize - blockSize / 2, mask.rows);
-	int hashValue = calcHashValue(center.x, center.y);
+	int leftBound = MAX(center.x - block_size / 2, 0);
+	int rightBound = MIN(center.x + block_size - block_size / 2, mask.cols);
+	int upBound = MAX(center.y - block_size / 2, 0);
+	int downBound = MIN(center.y + block_size - block_size / 2, mask.rows);
+	int hashValue = getHashValue(center.x, center.y);
 	list<PointPos> pointPositions;
-	// check if the the anchor point is an intersaction
-	// if it is, points of sevaral line segments will be returned
-	if (intersectingMap.count(hashValue))
+	bool in_mask = true;
+	// check if the anchor point is an intersection
+	// if it is, points of several line segments will be returned
+	if (intersect_map.count(hashValue))
 	{
-		pointPositions = intersectingMap[hashValue];
+		pointPositions = intersect_map[hashValue];
+	}
+	else if (out_intersect_map.count(hashValue))
+	{
+		pointPositions = out_intersect_map[hashValue];
+		in_mask = false;
 	}
 	else
 	{
 		pointPositions.push_back(p);
 	}
-	for (list<PointPos>::iterator p = pointPositions.begin(); p != pointPositions.end(); p++)
+	for (auto & pointPosition : pointPositions)
 	{
-		Endpoints endPoints = lineEnds[p->lineIndex];
-		Point *points = &linePoints[endPoints.trueLineIndex][0];
-		int beginIndex = p->pointIndex;
+		int true_line_index = (in_mask) ? line_ends[pointPosition.line_index].true_line_index : pointPosition.line_index;
+		Point *points = &structure_line_points[true_line_index][0];
+		int beginIndex = pointPosition.point_index;
 		// find the start index of the line segment
-		for (int i = p->pointIndex; i >= 0; i--)
-		{
-			if (points[i].x < leftBound || points[i].y < upBound || points[i].x >= rightBound || points[i].y >= downBound)
-			{
-				beginIndex = i + 1;
-				break;
-			}
-		}
-		// get anchor points forward
-		for (int i = beginIndex; i < p->pointIndex; i++)
-		{
-			ret.push_back(points[i]);
-		}
-		// get anchor points backward
-		for (int i = p->pointIndex; i < linePoints[endPoints.trueLineIndex].size(); i++)
-		{
-			if (points[i].x < leftBound || points[i].y < upBound || points[i].x >= rightBound || points[i].y >= downBound)
-			{
-				break;
-			}
-			else
-			{
-				ret.push_back(points[i]);
-			}
-		}
-	}
-	int i = 0;
-	i++;
-}
-
-void PointManager::getPointsinPatch(const PointPos &p, list<Point *> &begin, list<int> &length)
-{
-	// get all points of the line segment contained in this patch
-	Point center = getPoint(p);
-	int leftBound = MAX(center.x - blockSize / 2, 0);
-	int rightBound = MIN(center.x + blockSize - blockSize / 2, mask.cols);
-	int upBound = MAX(center.y - blockSize / 2, 0);
-	int downBound = MIN(center.y + blockSize - blockSize / 2, mask.rows);
-	int hashValue = calcHashValue(center.x, center.y);
-	list<PointPos> pointPositions;
-	bool inMask = true;
-	// check if the the anchor point is an intersaction
-	// if it is, points of sevaral line segments will be returned
-	if (intersectingMap.count(hashValue))
-	{
-		pointPositions = intersectingMap[hashValue];
-	}
-	else if (outIntersectingMap.count(hashValue))
-	{
-		pointPositions = outIntersectingMap[hashValue];
-		inMask = false;
-	}
-	else
-	{
-		pointPositions.push_back(p);
-	}
-	for (list<PointPos>::iterator p = pointPositions.begin(); p != pointPositions.end(); p++)
-	{
-		int trueLineIndex = (inMask) ? lineEnds[p->lineIndex].trueLineIndex : p->lineIndex;
-		Point *points = &linePoints[trueLineIndex][0];
-		int beginIndex = p->pointIndex;
-		// find the start index of the line segment
-		for (int i = p->pointIndex; i >= 0; i--)
+		for (int i = pointPosition.point_index; i >= 0; i--)
 		{
 			if (points[i].x < leftBound || points[i].y < upBound || points[i].x >= rightBound || points[i].y >= downBound)
 			{
@@ -309,7 +246,7 @@ void PointManager::getPointsinPatch(const PointPos &p, list<Point *> &begin, lis
 		begin.push_back(points + beginIndex);
 		// get anchor points backward
 		int i;
-		for (i = p->pointIndex; i < linePoints[trueLineIndex].size(); i++)
+		for (i = pointPosition.point_index; i < structure_line_points[true_line_index].size(); i++)
 		{
 			if (points[i].x < leftBound || points[i].y < upBound || points[i].x >= rightBound || points[i].y >= downBound)
 			{
@@ -317,372 +254,307 @@ void PointManager::getPointsinPatch(const PointPos &p, list<Point *> &begin, lis
 				break;
 			}
 		}
-		if (i == linePoints[trueLineIndex].size())
+		if (i == structure_line_points[true_line_index].size())
 		{
-			length.push_back(linePoints[trueLineIndex].size() - beginIndex);
+			length.push_back(structure_line_points[true_line_index].size() - beginIndex);
 		}
 	}
 }
 
-void PointManager::constructBPMap(list<int> &line)
+// generate the order of BP procedure, result is pushed in propagation_stack
+void PointManager::constructBpMap(list<int> &line)
 {
-	map<int, list<PointPos>>::iterator mapItor;
-	list<shared_ptr<MyNode>> BFSstack;
-	vector<vector<ushort>> pointVisitedMarks(linePoints.size());
-	vector<list<shared_ptr<MyNode>>> nodeListBucket(4);
-	set<int> intersectionSet;
+	map<int, list<PointPos>>::iterator map_iter;
+	list<shared_ptr<MyNode>> bfs_stack;
+	vector<vector<ushort>> visited_points(structure_line_points.size());
+	vector<list<shared_ptr<MyNode>>> node_list(4);
+	set<int> intersection_set;
 
 	nodes.clear();
-	propagationStack.clear();
-	MyNode::totalNum = 0;
+	propagation_stack.clear();
+	MyNode::total_num = 0;
 
-	// initialize the visit map
-	pointVisitedMarks.resize(linePoints.size());
-	for (int i = 0; i < linePoints.size(); i++)
+	// initialize visited map
+	visited_points.resize(structure_line_points.size());
+	for (int i = 0; i < structure_line_points.size(); i++)
 	{
-		pointVisitedMarks[i].resize(linePoints[i].size());
+		visited_points[i].resize(structure_line_points[i].size());
 	}
 
 	int total = 0;
-	list<int>::iterator itor;
-	for (itor = line.begin(); itor != line.end(); itor++)
+	list<int>::iterator iter;
+	for (iter = line.begin(); iter != line.end(); iter++)
 	{
-		total += lineEnds[*itor].endIndex - lineEnds[*itor].startIndex;
-		intersectionSet.insert(*itor);
+		total += line_ends[*iter].end_index - line_ends[*iter].start_index;
+		intersection_set.insert(*iter);
 	}
-	// reserve enough space for the node table
-	nodes.reserve(total / blockSize + 1);
-	// skip the entry numbered with 0
+
+	// vacate enough space for the node table
+	nodes.reserve(total / block_size + 1);
+
+	// skip the entry numbered 0
 	nodes.resize(1);
 
 	// enqueue all the intersections
-	for (mapItor = intersectingMap.begin(); mapItor != intersectingMap.end(); mapItor++)
+	for (map_iter = intersect_map.begin(); map_iter != intersect_map.end(); map_iter++)
 	{
-		if (intersectionSet.count(mapItor->second.begin()->lineIndex) == 0)
+		if (intersection_set.count(map_iter->second.begin()->line_index) == 0)
 		{
 			continue;
 		}
 		// enqueue the intersection (choose one point's position to represent all)
-		BFSstack.push_back(make_shared<MyNode>(*(mapItor->second.begin())));
+		bfs_stack.push_back(make_shared<MyNode>(*(map_iter->second.begin())));
 		// mark all intersecting points as visited
-		list<PointPos>::iterator listItor = mapItor->second.begin();
-		for (; listItor != mapItor->second.end(); listItor++)
+		auto list_iter = map_iter->second.begin();
+		for (; list_iter != map_iter->second.end(); list_iter++)
 		{
-			pointVisitedMarks[lineEnds[listItor->lineIndex].trueLineIndex][listItor->pointIndex] = MyNode::totalNum;
+            visited_points[line_ends[list_iter->line_index].true_line_index][list_iter->point_index] = MyNode::total_num;
 		}
 	}
 
 	// enqueue all the neighbor nodes of intersections
-	for (mapItor = intersectingMap.begin(); mapItor != intersectingMap.end(); mapItor++)
+	for (map_iter = intersect_map.begin(); map_iter != intersect_map.end(); map_iter++)
 	{
-		if (intersectionSet.count(mapItor->second.begin()->lineIndex) == 0)
+		if (intersection_set.count(map_iter->second.begin()->line_index) == 0)
 		{
 			continue;
 		}
-		shared_ptr<MyNode> n = *BFSstack.begin();
-		list<PointPos>::iterator listItor = mapItor->second.begin();
-		int neighborNum = 0;
-		for (; listItor != mapItor->second.end(); listItor++)
+		shared_ptr<MyNode> n = *bfs_stack.begin();
+		auto list_iter = map_iter->second.begin();
+		int neighbor_cnt = 0;
+		for (; list_iter != map_iter->second.end(); list_iter++)
 		{
-			neighborNum += addNeighbor(*n, *listItor, pointVisitedMarks, BFSstack);
+            neighbor_cnt += addNeighbor(*n, *list_iter, visited_points, bfs_stack);
 		}
-		// Enlarge nodeListBucket if necessary
-		if (neighborNum > nodeListBucket.size())
+		// Enlarge node_list if necessary
+		if (neighbor_cnt > node_list.size())
 		{
-			nodeListBucket.resize(mapItor->second.size() * 2);
+			node_list.resize(map_iter->second.size() * 2);
 		}
-		nodeListBucket[neighborNum - 1].push_front(n);
-		nodes.push_back(nodeListBucket[neighborNum - 1].begin());
-		BFSstack.pop_front();
+		node_list[neighbor_cnt - 1].push_front(n);
+		nodes.push_back(node_list[neighbor_cnt - 1].begin());
+		bfs_stack.pop_front();
 	}
 
-	// start propagation
-	while (BFSstack.size())
+	// pseudo-recurse to generate all neighbor relation
+	while (!bfs_stack.empty())
 	{
-		shared_ptr<MyNode> n = *BFSstack.begin();
-		int neighborNum = addNeighbor(*n, n->p, pointVisitedMarks, BFSstack);
-		nodeListBucket[neighborNum - 1].push_front(n);
-		nodes.push_back(nodeListBucket[neighborNum - 1].begin());
-		BFSstack.pop_front();
+		shared_ptr<MyNode> n = *bfs_stack.begin();
+		int neighborNum = addNeighbor(*n, n->p, visited_points, bfs_stack);
+		node_list[neighborNum - 1].push_front(n);
+		nodes.push_back(node_list[neighborNum - 1].begin());
+		bfs_stack.pop_front();
 	}
 
-	// generate the sequence for message sending
-	while (nodeListBucket[0].size() > 0)
+	// generate the sequence of message sending
+	while (!node_list[0].empty())
 	{
-		shared_ptr<MyNode> n = *nodeListBucket[0].begin();
+		shared_ptr<MyNode> n = *node_list[0].begin();
 		if (n->getEdgeNum() != 1)
 		{
 			assert(n->getEdgeNum() == 1);
 		}
-		list<shared_ptr<Edge>>::iterator eItor = n->getEdgeBegin();
-		nodes[n->id] = propagationStack.insert(propagationStack.end(), n);
-		nodeListBucket[0].pop_front();
+		auto edge_iter = n->getEdgeBegin();
+		nodes[n->id] = propagation_stack.insert(propagation_stack.end(), n);
+		node_list[0].pop_front();
 		// degrade the adjacent node
-		int id = (*eItor)->getAnother(n->id);
+		int id = (*edge_iter)->getAnother(n->id);
 		n = *nodes[id];
 		int edgeNum = n->getEdgeNum();
-		n->eraseEdge(*eItor);
-		nodeListBucket[edgeNum - 1].erase(nodes[id]);
+		n->eraseEdge(*edge_iter);
+		node_list[edgeNum - 1].erase(nodes[id]);
 		if (edgeNum > 1)
 		{
-			nodes[id] = nodeListBucket[edgeNum - 2].insert(nodeListBucket[edgeNum - 2].end(), n);
+			nodes[id] = node_list[edgeNum - 2].insert(node_list[edgeNum - 2].end(), n);
 		}
 		else
 		{
-			nodes[id] = propagationStack.insert(propagationStack.end(), n);
+			nodes[id] = propagation_stack.insert(propagation_stack.end(), n);
 		}
 	}
 }
 
-int PointManager::addNeighbor(MyNode &n, const PointPos &pos, vector<vector<ushort>> &visitedMark, list<shared_ptr<MyNode>> &BFSstack)
+int PointManager::addNeighbor(MyNode &n, const PointPos &pos, vector<vector<ushort>> &visited_points, list<shared_ptr<MyNode>> &bfs_stack)
 {
-	Endpoints endpoints = lineEnds[pos.lineIndex];
-	int lineIndex = endpoints.trueLineIndex;
-	int pointIndex = pos.pointIndex;
-	int prePointIndex = pointIndex - blockSize / 2;
-	int nextPointIndex = pointIndex + blockSize / 2;
-	int neighborNum = 0;
+	Endpoints endpoints = line_ends[pos.line_index];
+	int line_index = endpoints.true_line_index;
+	int point_index = pos.point_index;
+	int prev_point_ind = point_index - block_size / 2;
+	int next_point_ind = point_index + block_size / 2;
+	int neighbor_cnt = 0;
 
 	// check the point before current anchor point
-	if (prePointIndex >= endpoints.startIndex)
+	if (prev_point_ind >= endpoints.start_index)
 	{
 		int i;
 		// try choosing a existed anchor point as its neighbor
-		for (i = prePointIndex; i < pointIndex; i++)
+		for (i = prev_point_ind; i < point_index; i++)
 		{
-			if (visitedMark[lineIndex][i])
+			if (visited_points[line_index][i])
 			{
-				if (nodes.size() > visitedMark[lineIndex][i])
+				if (nodes.size() > visited_points[line_index][i])
 				{
 					// add an edge between two points
-					shared_ptr<Edge> tmpEdge = make_shared<Edge>(n.id, visitedMark[lineIndex][i]);
+					shared_ptr<Edge> tmpEdge = make_shared<Edge>(n.id, visited_points[line_index][i]);
 					n.push_front(tmpEdge);
-					(*nodes[visitedMark[lineIndex][i]])->push_back(tmpEdge);
+					(*nodes[visited_points[line_index][i]])->push_back(tmpEdge);
 				}
 				break;
 			}
 		}
 		// no existed point can be chosen, construct a new anchor point and enqueue it
-		if (i == pointIndex)
+		if (i == point_index)
 		{
-			BFSstack.push_back(make_shared<MyNode>(PointPos(pos.lineIndex, prePointIndex)));
-			visitedMark[lineIndex][prePointIndex] = MyNode::totalNum;
+			bfs_stack.push_back(make_shared<MyNode>(PointPos(pos.line_index, prev_point_ind)));
+            visited_points[line_index][prev_point_ind] = MyNode::total_num;
 		}
-		neighborNum++;
+		neighbor_cnt++;
 	}
 
 	// check the point behind current anchor point
-	if (nextPointIndex < endpoints.endIndex)
+	if (next_point_ind < endpoints.end_index)
 	{
 		int i;
-		// try choosing a existed anchor point as its neighbor
-		for (i = nextPointIndex; i > pointIndex; i--)
+		// try choosing an existed anchor point as its neighbor
+		for (i = next_point_ind; i > point_index; i--)
 		{
-			if (visitedMark[lineIndex][i])
+			if (visited_points[line_index][i])
 			{
-				if (nodes.size() > visitedMark[lineIndex][i])
+				if (nodes.size() > visited_points[line_index][i])
 				{
 					// add an edge between two points
-					shared_ptr<Edge> tmpEdge = make_shared<Edge>(n.id, visitedMark[lineIndex][i]);
+					shared_ptr<Edge> tmpEdge = make_shared<Edge>(n.id, visited_points[line_index][i]);
 					n.push_front(tmpEdge);
-					(*nodes[visitedMark[lineIndex][i]])->push_back(tmpEdge);
+					(*nodes[visited_points[line_index][i]])->push_back(tmpEdge);
 				}
 				break;
 			}
 		}
 		// no existed point can be chosen, construct a new anchor point and enqueue it
-		if (i == pointIndex)
+		if (i == point_index)
 		{
-			BFSstack.push_back(make_shared<MyNode>(PointPos(pos.lineIndex, nextPointIndex)));
-			visitedMark[lineIndex][nextPointIndex] = MyNode::totalNum;
+			bfs_stack.push_back(make_shared<MyNode>(PointPos(pos.line_index, next_point_ind)));
+            visited_points[line_index][next_point_ind] = MyNode::total_num;
 		}
-		neighborNum++;
+		neighbor_cnt++;
 	}
-	return neighborNum;
+	return neighbor_cnt;
 }
 
-void PointManager::getPropstackItor(list<shared_ptr<MyNode>>::iterator &begin, list<shared_ptr<MyNode>>::iterator &end)
+void PointManager::getStackIter(list<shared_ptr<MyNode>>::iterator &begin, list<shared_ptr<MyNode>>::iterator &end)
 {
-	begin = propagationStack.begin();
-	end = propagationStack.end();
+	begin = propagation_stack.begin();
+	end = propagation_stack.end();
 }
 
-void PointManager::getPropstackReverseItor(list<shared_ptr<MyNode>>::reverse_iterator &begin, list<shared_ptr<MyNode>>::reverse_iterator &end)
+void PointManager::getStackReverseIter(list<shared_ptr<MyNode>>::reverse_iterator &begin, list<shared_ptr<MyNode>>::reverse_iterator &end)
 {
-	begin = list<shared_ptr<MyNode>>::reverse_iterator(propagationStack.end())++;
-	end = list<shared_ptr<MyNode>>::reverse_iterator(propagationStack.begin());
+	begin = list<shared_ptr<MyNode>>::reverse_iterator(propagation_stack.end())++;
+	end = list<shared_ptr<MyNode>>::reverse_iterator(propagation_stack.begin());
 }
 
-void PointManager::getSamplePoints(vector<PointPos> &samples, int sampleStep, list<int> &line)
+// sample the line and collect known points, which are outside mask
+void PointManager::getKnownPoint(vector<PointPos> &samples, int sample_step, list<int> &line)
 {
-	if (lineEnds.size() == 0)
+	if (line_ends.empty())
 	{
 		return;
 	}
 	samples.clear();
-	Endpoints endpoints = lineEnds[*line.begin()];
+	Endpoints endpoints = line_ends[*line.begin()];
 
 	// reserve enough space for samples
 	int total = 0;
-	int curLine = -1;
-	list<int>::iterator itor;
-	for (itor = line.begin(); itor != line.end(); itor++)
+	int curr_line_ind = -1;
+	list<int>::iterator iter;
+	for (iter = line.begin(); iter != line.end(); iter++)
 	{
-		if (lineEnds[*itor].trueLineIndex != curLine)
+		if (line_ends[*iter].true_line_index != curr_line_ind)
 		{
-			curLine = lineEnds[*itor].trueLineIndex;
-			total += linePoints[curLine].size();
+            curr_line_ind = line_ends[*iter].true_line_index;
+			total += structure_line_points[curr_line_ind].size();
 		}
-		total -= (lineEnds[*itor].endIndex - lineEnds[*itor].startIndex);
+		total -= (line_ends[*iter].end_index - line_ends[*iter].start_index);
 	}
-	samples.reserve(total / sampleStep);
+	samples.reserve(total / sample_step);
 
-	// get samples from all line segments outside the mask area
-	// sampling step = sampleStep
-	itor = line.begin();
-	for (int i = 0; i < linePoints.size(); i++)
+    // sample the line with sample_step
+	iter = line.begin();
+	for (int i = 0; i < structure_line_points.size(); i++)
 	{
-		// +blocksize: ensure all samples have complete line segments
-		if (endpoints.trueLineIndex != i)
+		// +block_size: ensure all samples have complete line segments
+		if (endpoints.true_line_index != i)
 		{
 			continue;
 		}
-		int beginIndex = blockSize;
-		int endIndex;
-		while (endpoints.trueLineIndex == i)
+		int begin_index = block_size;
+		int end_index;
+		while (endpoints.true_line_index == i)
 		{
-			endIndex = endpoints.startIndex;
-			for (int j = endIndex - 1; j >= beginIndex; j -= sampleStep)
+            end_index = endpoints.start_index;
+			for (int j = end_index - 1; j >= begin_index; j -= sample_step)
 			{
-				if (j == beginIndex)
+				if (j == begin_index)
 				{
 					int c = 0;
 					c++;
 				}
-				if (!nearBoundary(linePoints[i][j], true))
+				if (!nearBoundary(structure_line_points[i][j], true))
 				{
-					samples.push_back(PointPos(*itor, j));
+					samples.emplace_back(*iter, j);
 				}
 			}
-			beginIndex = endpoints.endIndex;
-			itor++;
-			if (itor == line.end())
+            begin_index = endpoints.end_index;
+			iter++;
+			if (iter == line.end())
 			{
 				break;
 			}
-			endpoints = lineEnds[*itor];
+			endpoints = line_ends[*iter];
 		}
-		// -blocksize: ensure all samples have complete line segments
-		endIndex = linePoints[i].size() - blockSize;
-		for (int j = endIndex - 1; j >= beginIndex; j -= sampleStep)
+		// -block_size: ensure all samples have complete line segments
+		end_index = structure_line_points[i].size() - block_size;
+		for (int j = end_index - 1; j >= begin_index; j -= sample_step)
 		{
-			if (!nearBoundary(linePoints[i][j], true))
+			if (!nearBoundary(structure_line_points[i][j], true))
 			{
-				samples.push_back(PointPos(*(list<int>::reverse_iterator(itor)++), j));
+				samples.emplace_back(*(list<int>::reverse_iterator(iter)++), j);
 			}
 		}
 	}
 	samples.shrink_to_fit();
 }
 
-void PointManager::getSamplePoints(vector<PointPos> &samples, int sampleStep)
+// sample the line and collect unknown points, which are inside mask
+void PointManager::getUnknownPoint(vector<PointPos> &anchors, list<int> &line)
 {
-	if (lineEnds.size() == 0)
-	{
-		return;
-	}
-	samples.clear();
-	int lineIndex = 0;
-	Endpoints endpoints = lineEnds[0];
-
-	// reserve enough space for samples
-	int total = 0;
-	for (int i = 0; i < linePoints.size(); i++)
-	{
-		total += linePoints[i].size();
-	}
-	for (int i = 0; i < lineEnds.size(); i++)
-	{
-		total -= (lineEnds[i].endIndex - lineEnds[i].startIndex);
-	}
-	samples.reserve(total / sampleStep);
-
-	// get samples from all line segments outside the mask area
-	// sampling step = sampleStep
-	for (int i = 0; i < linePoints.size(); i++)
-	{
-		// +blocksize: ensure all samples have complete line segments
-		int beginIndex = blockSize;
-		int endIndex;
-		while (endpoints.trueLineIndex == i)
-		{
-			endIndex = endpoints.startIndex;
-			for (int j = endIndex - 1; j >= beginIndex; j -= sampleStep)
-			{
-				if (j == beginIndex)
-				{
-					int c = 0;
-					c++;
-				}
-				if (!nearBoundary(linePoints[i][j], true))
-				{
-					samples.push_back(PointPos(lineIndex, j));
-				}
-			}
-			beginIndex = endpoints.endIndex;
-			++lineIndex;
-			if (lineIndex >= lineEnds.size())
-			{
-				break;
-			}
-			endpoints = lineEnds[lineIndex];
-		}
-		// -blocksize: ensure all samples have complete line segments
-		endIndex = linePoints[i].size() - blockSize;
-		for (int j = endIndex - 1; j >= beginIndex; j -= sampleStep)
-		{
-			if (!nearBoundary(linePoints[i][j], true))
-			{
-				samples.push_back(PointPos(lineIndex - 1, j));
-			}
-		}
-	}
-	samples.shrink_to_fit();
-}
-
-void PointManager::getAnchorPoints(vector<PointPos> &anchors, list<int> &line)
-{
-	// only called by DP
-	// BP get anchor points by calling constructBPMap and getPropstackItor sequentially
 	anchors.clear();
-	Endpoints endpoints = lineEnds[*line.begin()];
+	Endpoints endpoints = line_ends[*line.begin()];
 
 	// reserve enough space for anchors
 	int total = 0;
-	list<int>::iterator itor;
-	for (itor = line.begin(); itor != line.end(); itor++)
+	list<int>::iterator iter;
+	for (iter = line.begin(); iter != line.end(); iter++)
 	{
-		total += (lineEnds[*(itor)].endIndex - lineEnds[*(itor)].startIndex);
+		total += (line_ends[*(iter)].end_index - line_ends[*(iter)].start_index);
 	}
-	anchors.reserve(total / (blockSize / 2));
+	anchors.reserve(total / (block_size / 2));
 
-	// get anchors from all iline segments inside the mask area
-	// sampling step = blockSize / 2
-	itor = line.begin();
-	for (int i = 0; i < linePoints.size(); i++)
+	iter = line.begin();
+	for (int i = 0; i < structure_line_points.size(); i++)
 	{
-		while (endpoints.trueLineIndex == i)
+		while (endpoints.true_line_index == i)
 		{
-			for (int j = endpoints.startIndex; j < endpoints.endIndex; j += blockSize / 2)
+			for (int j = endpoints.start_index; j < endpoints.end_index; j += block_size / 2)
 			{
-				anchors.push_back(PointPos(*itor, j));
+				anchors.emplace_back(*iter, j);
 			}
-			++itor;
-			if (itor == line.end())
+			++iter;
+			if (iter == line.end())
 			{
 				break;
 			}
-			endpoints = lineEnds[*itor];
+			endpoints = line_ends[*iter];
 		}
 	}
 	anchors.shrink_to_fit();

@@ -1,0 +1,10 @@
+# ninja log v5
+3277	5447	1685948115876129978	CMakeFiles/ImageCompletion.dir/TextureCompletion.cpp.o	7bb68cd5374af4bb
+2127	6507	1685948116932215567	CMakeFiles/ImageCompletion.dir/Photometric.cpp.o	e4ae3859865332e
+4	3256	1685950325224407298	CMakeFiles/ImageCompletion.dir/PointManager.cpp.o	85853d4dd8a5eb1c
+1	76	1685950524847675046	build.ninja	b57686cc295ceff4
+2	2165	1685950347866133133	CMakeFiles/ImageCompletion.dir/StructurePropagation.cpp.o	52ef109916504cb7
+0	2126	1685948112551860572	CMakeFiles/ImageCompletion.dir/main.cpp.o	56e9dc1086a19414
+2165	2632	1685950348330168522	ImageCompletion	d30cc2e8c06a07bf
+3	2362	1685950324328339032	CMakeFiles/ImageCompletion.dir/main_bak.cpp.o	e72b15eee5f2276a
+0	2224	1685948112651868677	CMakeFiles/ImageCompletion.dir/OpenCvUtility.cpp.o	4d2fb62c00e73cbb
