@@ -14,7 +14,7 @@ void StructurePropagation::SetParam(int block_size, int sample_step, double ks, 
 
 // run structure propagation
 void
-StructurePropagation::Run(const Mat &mask, const Mat &img_masked, Mat &mask_after_propagation, vector<vector<Point>> &plist,
+StructurePropagation::Run(const Mat &mask, const Mat &img_masked, Mat &mask_after_propagation, vector<vector<Point>> &structure_line_points,
                           Mat &result) {
     mask_after_propagation = Mat::zeros(mask.size(), CV_8UC1);
 
@@ -22,9 +22,9 @@ StructurePropagation::Run(const Mat &mask, const Mat &img_masked, Mat &mask_afte
     cvtColor(img_masked, image_src_grey, COLOR_BGR2GRAY);
 
     set<shared_ptr<list<int>>> line_sets;
-    point_manager.init(plist, mask, block_size, line_sets);
+    point_manager.init(structure_line_points, mask, block_size, line_sets);
     // HACK:
-    // point_manager.init(plist, image_src_grey, block_size, line_sets);
+    // point_manager.init(structure_line_points, image_src_grey, block_size, line_sets);
 
     int *sample_indices;
     vector<PointPos> unknown_points;

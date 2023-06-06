@@ -19,7 +19,7 @@ public:
 
     void SetParam(int block_size, int sample_step, double ks, double ki);
 
-    void Run(const Mat &mask, const Mat &img_masked, Mat &mask_after_propagation, vector<vector<Point>> &plist, Mat &result);
+    void Run(const Mat &mask, const Mat &img_masked, Mat &mask_after_propagation, vector<vector<Point>> &structure_line_points, Mat &result);
 
 private:
     int block_size;
