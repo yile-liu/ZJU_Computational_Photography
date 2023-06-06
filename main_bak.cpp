@@ -247,7 +247,7 @@ void show_interface()
             Mat mask_structure_tmp = Mat::zeros(img.rows, img.cols, CV_8UC1);
 
             // run structure propagation
-            SP.SetParam(block_size, sample_step, line_or_curve, ks, ki);
+            SP.SetParam(block_size, sample_step, ks, ki);
             SP.Run(mask_inv, img_masked, mask_structure_tmp, plist, sp_result);
 
             mask_structure_tmp.copyTo(mask_structure, mask_structure_tmp);
