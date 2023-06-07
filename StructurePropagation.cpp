@@ -372,7 +372,7 @@ StructurePropagation::computeMij(MyNode &n, const list<shared_ptr<Edge>>::iterat
         for (int i = 0; i < known_points.size(); i++) {
             double E1 = ks * computeEs(n.p, known_points[i]) + ki * computeEi(image_src, n.p, known_points[i]);
 
-            // add up messages sent from Mki (k != j)
+            // add up messages sent from   (k != j)
             double msg = 0;
             for (auto iter = n.getEdgeBegin(); iter != end; iter++) {
                 if (iter != edge_iter) {
