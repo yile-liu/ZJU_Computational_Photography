@@ -1,7 +1,6 @@
 #ifndef STRUCTURE_PROPAGATION_H
 #define STRUCTURE_PROPAGATION_H
 
-#include "OpenCvUtility.h"
 #include "PointManager.h"
 #include <map>
 #include <list>
