@@ -4,12 +4,11 @@
 #include <iostream>
 #include <cmath>
 
-#define ATD at<Vec3d>
-#define ATU at<uchar>
-#define M_DST 0
-#define M_SRC 1
-#define M_BORDER 2
-#define M_BOUNDARY 3
+
+#define MASK_DST 0
+#define MASK_SRC 1
+#define MASK_BORDER 2
+#define MASK_BOUNDARY 3
 
 int offset_t[4][2] = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
 // local offset: + offset
@@ -21,7 +20,7 @@ int offset_t[4][2] = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
 Mat Photometric::mask;
 Mat Photometric::dst;
 
-// init the mask for correction
+// 初始化使用的Mask
 // only needs calling once
 void Photometric::initMask(Mat image, Mat imageMask, uchar unknown, uchar known)
 {
@@ -31,7 +30,6 @@ void Photometric::initMask(Mat image, Mat imageMask, uchar unknown, uchar known)
 	image.convertTo(temp, CV_64FC3);
 	temp.copyTo(dst);
 	// create mask, +2 is for border
-	// mask = Mat(imageMask.size().height + 2, imageMask.size().width + 2, CV_8U);
 	// the same size is okay
 	mask = Mat(imageMask.size().height, imageMask.size().width, CV_8U);
 	// update mask, treat unknown region as border
@@ -40,9 +38,9 @@ void Photometric::initMask(Mat image, Mat imageMask, uchar unknown, uchar known)
 	imageMask.copyTo(mask);
 	Mat unknown_roi = mask == unknown;
 	Mat known_roi = mask == known;
-	// M_BORDER will be useless
-	mask.setTo(Scalar(M_BORDER), unknown_roi);
-	mask.setTo(Scalar(M_DST), known_roi);
+	// MASK_BORDER will be useless
+	mask.setTo(Scalar(MASK_BORDER), unknown_roi);
+	mask.setTo(Scalar(MASK_DST), known_roi);
 	return;
 }
 
@@ -67,20 +65,20 @@ void Photometric::correctE(Mat &patch, int offset_x, int offset_y)
 	{
 		for (x = 0; x < width; x++)
 		{
-			if (mask.ATU(y + offset_y, x + offset_x) == M_DST)
+			if (mask.at<uchar>(y + offset_y, x + offset_x) == MASK_DST)
 			{
-				result.ATD(y, x) = dst.ATD(y + offset_y, x + offset_x);
-				src.ATD(y, x) = dst.ATD(y + offset_y, x + offset_x);
-				bitmap.ATU(y, x) = M_DST;
+				result.at<Vec3d>(y, x) = dst.at<Vec3d>(y + offset_y, x + offset_x);
+				src.at<Vec3d>(y, x) = dst.at<Vec3d>(y + offset_y, x + offset_x);
+				bitmap.at<uchar>(y, x) = MASK_DST;
 			}
-			else if (mask.ATU(y + offset_y, x + offset_x) == M_BORDER)
+			else if (mask.at<uchar>(y + offset_y, x + offset_x) == MASK_BORDER)
 			{
-				mask.ATU(y + offset_y, x + offset_x) = M_SRC;
-				bitmap.ATU(y, x) = M_SRC;
+				mask.at<uchar>(y + offset_y, x + offset_x) = MASK_SRC;
+				bitmap.at<uchar>(y, x) = MASK_SRC;
 			}
 			if (x == 0 || y == 0 || x == width - 1 || y == height - 1)
 			{
-				mask.ATU(y + offset_y, x + offset_x) = M_BOUNDARY;
+				mask.at<uchar>(y + offset_y, x + offset_x) = MASK_BOUNDARY;
 			}
 		}
 	}
@@ -101,7 +99,7 @@ void Photometric::correctE(Mat &patch, int offset_x, int offset_y)
 	{
 		for (x = 0; x < width; x++)
 		{
-			if (mask.ATU(y + offset_y, x + offset_x) == M_DST || mask.ATU(y + offset_y, x + offset_x) == M_SRC)
+			if (mask.at<uchar>(y + offset_y, x + offset_x) == MASK_DST || mask.at<uchar>(y + offset_y, x + offset_x) == MASK_SRC)
 			{
 				index.at<int>(y, x) = cnt;
 				cnt++;
@@ -111,53 +109,51 @@ void Photometric::correctE(Mat &patch, int offset_x, int offset_y)
 	// traverse all f_q in patch
 	// we know that the patch is a square
 	// may using matrix manipulations if i have enough time
-	int ch;
+	int channel;
 	for (y = 1; y < height - 1; y++)
 	{
 		for (x = 1; x < width - 1; x++)
 		{
-			for (ch = 0; ch < 3; ch++)
+			for (channel = 0; channel < 3; channel++)
 			{
 				double sum_vpq = 0, sum_boundary = 0;
-				// neighbors
 				double neighbor = 0;
-				// traverse neighbors
+				
 				for (i = 0; i < 4; i++)
 				{
-					switch (mask.ATU(M_OFFSET(i)))
+					switch (mask.at<uchar>(M_OFFSET(i)))
 					{
-					case M_BORDER:
-						// border, truncated neighborhood
+					case MASK_BORDER:
 						break;
-					case M_BOUNDARY:
+					case MASK_BOUNDARY:
 						neighbor += 1.0;
-						sum_boundary += src.ATD(L_OFFSET(i))(ch);
-						if (bitmap.ATU(y, x) == bitmap.ATU(L_OFFSET(i)))
+						sum_boundary += src.at<Vec3d>(L_OFFSET(i))(channel);
+						if (bitmap.at<uchar>(y, x) == bitmap.at<uchar>(L_OFFSET(i)))
 						{
-							sum_vpq += src.ATD(y, x)(ch) - src.ATD(L_OFFSET(i))(ch);
+							sum_vpq += src.at<Vec3d>(y, x)(channel) - src.at<Vec3d>(L_OFFSET(i))(channel);
 						}
 						break;
-					case M_SRC:
-					case M_DST:
+					case MASK_SRC:
+					case MASK_DST:
 						// in region
-						if (ch == 0)
+						if (channel == 0)
 						{
 							A.insert(index.at<int>(y, x), index.at<int>(L_OFFSET(i))) = -1.0;
 						}
-						// gradient
-						if (mask.ATU(y + offset_y, x + offset_x) == mask.ATU(M_OFFSET(i)))
+						// neighbor之间的梯度和
+						if (mask.at<uchar>(y + offset_y, x + offset_x) == mask.at<uchar>(M_OFFSET(i)))
 						{
-							sum_vpq += src.ATD(y, x)(ch) - src.ATD(L_OFFSET(i))(ch);
+							sum_vpq += src.at<Vec3d>(y, x)(channel) - src.at<Vec3d>(L_OFFSET(i))(channel);
 						}
 						neighbor += 1.0;
 						break;
 					}
 				}
-				if (ch == 0)
+				if (channel == 0)
 				{
 					A.insert(index.at<int>(y, x), index.at<int>(y, x)) = neighbor;
 				}
-				b[ch](index.at<int>(y, x)) = sum_boundary + sum_vpq;
+				b[channel](index.at<int>(y, x)) = sum_boundary + sum_vpq;
 			}
 		}
 	}
@@ -165,30 +161,30 @@ void Photometric::correctE(Mat &patch, int offset_x, int offset_y)
 	solver.compute(A);
 	if (solver.info() != Eigen::Success)
 	{
-		std::cout << "decomposition failed" << std::endl;
+		std::cout << "failed" << std::endl;
 		return;
 	}
-	for (ch = 0; ch < 3; ch++)
+	for (channel = 0; channel < 3; channel++)
 	{
-		sol[ch] = solver.solve(b[ch]);
+		sol[channel] = solver.solve(b[channel]);
 		if (solver.info() != Eigen::Success)
 		{
 			std::cout << "solving failed" << std::endl;
 			return;
 		}
 	}
-	for (ch = 0; ch < 3; ch++)
+	for (channel = 0; channel < 3; channel++)
 	{
 		for (y = 1; y < height - 1; y++)
 		{
 			for (x = 1; x < width - 1; x++)
 			{
-				result.ATD(y, x)(ch) = sol[ch](index.at<int>(y, x));
+				result.at<Vec3d>(y, x)(channel) = sol[channel](index.at<int>(y, x));
 			}
 		}
 	}
 	// update mask
-	mask(patch_mask).setTo(Scalar(M_DST));
+	mask(patch_mask).setTo(Scalar(MASK_DST));
 	// get result
 	Mat uresult;
 	result.convertTo(uresult, CV_8UC3);

@@ -326,19 +326,20 @@ StructurePropagation::computeE2(const Mat &image_src, const PointPos &i1, const 
     }
 }
 
-//
+//对于多结构的线，使用Belief Propagation
 int *StructurePropagation::BP(const vector<PointPos> &known_points, vector<PointPos> &unknown_points, const Mat &image_src)
 {
-    // initialization
+
     int size = point_manager.getStackSize();
     unknown_points.clear();
     unknown_points.reserve(size);
 
+    //从已经建好链表的point_manager取得迭代器，迭代会从多线的交点开始
     list<shared_ptr<MyNode>>::iterator iter;
     list<shared_ptr<MyNode>>::iterator end;
     point_manager.getStackIter(iter, end);
 
-    // receive messages from neighbors
+    // 从邻近节点取得信息
     for (; iter != end; iter++)
     {
         shared_ptr<MyNode> n = *iter;
@@ -355,7 +356,7 @@ int *StructurePropagation::BP(const vector<PointPos> &known_points, vector<Point
     list<shared_ptr<MyNode>>::reverse_iterator rev_end;
     point_manager.getStackReverseIter(rev_itor, rev_end);
 
-    // send updated messages back to neighbors
+    // 对邻居进行更新
     for (int i = 0; rev_itor != rev_end; rev_itor++, i++)
     {
         shared_ptr<MyNode> n = *rev_itor;
@@ -364,13 +365,13 @@ int *StructurePropagation::BP(const vector<PointPos> &known_points, vector<Point
         auto edge_iter = begin;
         unknown_points.push_back(n->p);
 
-        // messages for all neighbors
+    
         for (edge_iter++; edge_iter != end; edge_iter++)
         {
             computeMij(*n, edge_iter, image_src, known_points);
         }
 
-        // compute E1 for all possible xi
+        // 算E1
         int min_ind = 0;
         double min = INT64_MAX;
         for (int xi = 0; xi < known_points.size(); xi++)
@@ -378,7 +379,7 @@ int *StructurePropagation::BP(const vector<PointPos> &known_points, vector<Point
             bp_visited[xi] = ks * computeEs(n->p, known_points[xi]) + ki * computeEi(image_src, n->p, known_points[xi]);
         }
 
-        // add up all messages sent to this node
+        // 更新此节点
         for (edge_iter = begin; edge_iter != end; edge_iter++)
         {
             double **toMptr = (*edge_iter)->getMbyTo(n->id);
@@ -388,7 +389,7 @@ int *StructurePropagation::BP(const vector<PointPos> &known_points, vector<Point
             }
         }
 
-        // find the optimal xi
+        // 最优Xi
         for (int i = 0; i < known_points.size(); i++)
         {
             if (bp_visited[i] < min)
