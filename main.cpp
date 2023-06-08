@@ -9,7 +9,7 @@
 using namespace std;
 using namespace cv;
 
-enum _line_or_curve {
+enum LINE_OR_CURVE {
     LINE,
     CURVE
 };
@@ -23,8 +23,9 @@ Mat image_with_mask; // masked part of image_src is painted with special color
 
 StructurePropagation structure_propagation;
 
-vector<vector<Point>> structure_line_set;
+vector<vector<Point>> structure_lines;
 
+// default parameters
 int brush_size = 30;
 int block_size = 20;
 int sample_step = 10;
@@ -111,23 +112,23 @@ static void structurePropagationMouseCallBack(int event, int x, int y, int flags
         curr_point_set.emplace_back(x, y);
     }
         // right bottom down, abort drawing
-        // if it's a curve and two or more points is drawn, add it to structure_line_set
+        // if it's a curve and two or more points is drawn, add it to structure_lines
     else if (event == EVENT_RBUTTONDOWN) {
         if (line_or_curve == CURVE && curr_point_set.size() > 1) {
-            structure_line_set.emplace_back(vector<Point>(curr_point_set));
+            structure_lines.emplace_back(vector<Point>(curr_point_set));
         }
 
         curr_point_set.clear();
     }
 
-    // if it's a line and two points is drawn, add it to structure_line_set
+    // if it's a line and two points is drawn, add it to structure_lines
     if (line_or_curve == LINE && curr_point_set.size() == 2) {
-        structure_line_set.emplace_back(vector<Point>(curr_point_set));
+        structure_lines.emplace_back(vector<Point>(curr_point_set));
         curr_point_set.clear();
     }
 
     // draw sturcture_line on image in special color, only for UI
-    drawStructureLine(image_with_mask, image_with_structure_line, structure_line_set, curr_point_set);
+    drawStructureLine(image_with_mask, image_with_structure_line, structure_lines, curr_point_set);
 
     // draw a line from the latest drawn point (if exists) to current mouse position
     if (curr_point_set.size() > 0) {
@@ -137,8 +138,9 @@ static void structurePropagationMouseCallBack(int event, int x, int y, int flags
     imshow("Structure Propagation", image_with_structure_line);
 }
 
-void getDensePointSet(const vector<vector<Point>> &structure_line_set, vector<vector<Point>> &out) {
-    for (vector<Point> point_set: structure_line_set) {
+void getPointsOnLines(const vector<vector<Point>> &lines, vector<vector<Point>> &line_points) {
+    for (vector<Point> point_set: lines) {
+        cout << point_set.size() << endl;
         for (int i = 0; i < (int) (point_set.size()) - 1; i++) {
             int abs_x = std::abs(point_set[i].x - point_set[i + 1].x);
             int abs_y = std::abs(point_set[i].y - point_set[i + 1].y);
@@ -166,7 +168,7 @@ void getDensePointSet(const vector<vector<Point>> &structure_line_set, vector<ve
                         point_samples.emplace_back(x, y);
                     }
                 }
-                out.emplace_back(vector<Point>(point_samples));
+                line_points.emplace_back(vector<Point>(point_samples));
             }
         }
     }
@@ -194,22 +196,29 @@ void structurePropagation() {
         if (c == 27) break; // ESC
         switch (c) {
             case 's':
-                getDensePointSet(structure_line_set, structure_line_points);
-                // TODO: structure propagation
+                getPointsOnLines(structure_lines, structure_line_points);
+
                 structure_propagation.SetParam(block_size, sample_step, ks / 100.0, ki / 100.0);
                 structure_propagation.Run(mask, image_with_mask, mask_temp, structure_line_points, sp_result);
 
+                // update mask and copy the result to image_with_mask
+                // should not imshow(sp_result) here because the windows will refresh in mouse callback with imshow(image_with_mask)
                 mask_temp.copyTo(mask, mask_temp);
                 sp_result.copyTo(image_with_mask);
                 imshow("Structure Propagation", image_with_mask);
 
                 structure_line_points.clear();
-                structure_line_set.clear();
+                structure_lines.clear();
 
                 break;
 
             case 't':
                 // TODO: texture propagation
+                break;
+
+            case 'r':
+                structure_line_points.clear();
+                structure_lines.clear();
                 break;
         }
     }

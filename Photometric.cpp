@@ -2,7 +2,6 @@
 #include "eigen3/Eigen/Core"
 #include "eigen3/Eigen/Sparse"
 #include <iostream>
-#include <cmath>
 
 #define ATD at<Vec3d>
 #define ATU at<uchar>

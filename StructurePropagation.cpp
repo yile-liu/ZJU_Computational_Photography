@@ -83,26 +83,22 @@ int *StructurePropagation::DP(const vector<PointPos> &known_points, vector<Point
         prev_offset = ((i + 1) % 2) * known_points.size();
 
         for (int xi = 0; xi < known_points.size(); xi++) {
-            // compute E1
             double E1 = ks * computeEs(unknown_points[i], known_points[xi]) +
                         ki * computeEi(image_src_grey, unknown_points[i], known_points[xi]);
 
-            // compute E2 and
-            double min = INT_MAX;
+            double min_E2 = 1e9 + 7;
             int min_ind = 0;
             for (int xj = 0; xj < known_points.size(); xj++) {
-                double tmp = computeE2(image_src_grey, unknown_points[i], unknown_points[i - 1], known_points[xi],
-                                       known_points[xj]) +
-                             M[prev_offset + xj];
-                if (tmp < min) {
-                    min = tmp;
+                double tmp = computeE2(image_src_grey, unknown_points[i], unknown_points[i - 1],
+                                       known_points[xi], known_points[xj]) + M[prev_offset + xj];
+                if (tmp < min_E2) {
+                    min_E2 = tmp;
                     min_ind = xj;
                 }
             }
 
-            // record xi and M
             record[known_points.size() * i + xi] = min_ind;
-            M[curr_offset + xi] = E1 + min;
+            M[curr_offset + xi] = E1 + min_E2;
         }
     }
 
@@ -157,17 +153,18 @@ double StructurePropagation::computeEs(const PointPos &i, const PointPos &xi) {
     Point pxi = point_manager.getPoint(xi);
     int offset_x = pxi.x - pi.x;
     int offset_y = pxi.y - pi.y;
-    list<int>::iterator lenItor1, lenItor2;
-    list<Point *>::iterator pointItor1, pointItor2;
+    list<int>::iterator line_iter1, line_iter2;
+    list<Point *>::iterator point_iter1, point_iter2;
 
     // compute minimal distance
-    for (lenItor1 = length1.begin(), pointItor1 = begin1.begin(); lenItor1 != length1.end(); lenItor1++, pointItor1++) {
-        Point *points1 = *pointItor1;
-        for (int i = 0; i < *lenItor1; i++) {
-            for (lenItor2 = length2.begin(), pointItor2 = begin2.begin();
-                 lenItor2 != length2.end(); lenItor2++, pointItor2++) {
-                for (int j = 0; j < *lenItor2; j++) {
-                    Point *points2 = *pointItor2;
+    for (line_iter1 = length1.begin(), point_iter1 = begin1.begin();
+         line_iter1 != length1.end(); line_iter1++, point_iter1++) {
+        Point *points1 = *point_iter1;
+        for (int i = 0; i < *line_iter1; i++) {
+            for (line_iter2 = length2.begin(), point_iter2 = begin2.begin();
+                 line_iter2 != length2.end(); line_iter2++, point_iter2++) {
+                for (int j = 0; j < *line_iter2; j++) {
+                    Point *points2 = *point_iter2;
                     int dx = points1[i].x - points2[j].x + offset_x;
                     int dy = points1[i].y - points2[j].y + offset_y;
                     int dist = dx * dx + dy * dy;
@@ -198,17 +195,15 @@ double StructurePropagation::computeEi(const Mat &image_src, const PointPos &i, 
     if (point_manager.nearBoundary(i)) {
         Point pi = point_manager.getPoint(i);
         Point pxi = point_manager.getPoint(xi);
-        int offset1 = block_size / 2;
-        int offset2 = block_size - offset1;
 
         int cnt = 0;
         int ssd = 0;
-        for (int i = -offset1; i < offset2; i++) {
-            const auto *ptri = image_src.ptr<uchar>(i + pi.y);
-            const auto *ptrxi = image_src.ptr<uchar>(i + pxi.y);
-            for (int j = -offset1; j < offset2; j++) {
-                if (ptri[j + pi.x] != 0) {
-                    int diff = ptri[j + pi.x] - ptrxi[j + pxi.x];
+        for (int i = -block_size / 2; i < block_size / 2; i++) {
+            auto *point_i = image_src.ptr<uchar>(i + pi.y);
+            auto *point_xi = image_src.ptr<uchar>(i + pxi.y);
+            for (int j = -block_size / 2; j < block_size / 2; j++) {
+                if (point_i[j + pi.x] != 0) {
+                    int diff = point_i[j + pi.x] - point_xi[j + pxi.x];
                     ssd += diff * diff;
                     cnt++;
                 }
@@ -397,11 +392,9 @@ StructurePropagation::computeMij(MyNode &n, const list<shared_ptr<Edge>>::iterat
     }
 }
 
-inline Vec3b AlphaBlending(Vec3b pixel1, Vec3b pixel2, double alpha)
-{
+inline Vec3b AlphaBlending(Vec3b pixel1, Vec3b pixel2, double alpha) {
     Vec3b res;
-    for (int i = 0; i < 3; i++)
-    {
+    for (int i = 0; i < 3; i++) {
         res[i] = uchar(pixel1[i] * alpha + pixel2[i] * (1 - alpha));
     }
     return res;
