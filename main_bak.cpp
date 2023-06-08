@@ -5,7 +5,7 @@
 #include "OpenCvUtility.h"
 #include <opencv2/imgproc/types_c.h>
 
-#include "TextureCompletion.h"
+#include "TexturePropagation.h"
 
 using namespace std;
 using namespace cv;

@@ -2,7 +2,7 @@
 #include <algorithm>
 #include <queue>
 
-#include "Photometric.h"
+#include "PhotometricalCorrection.h"
 
 // set parameters
 void StructurePropagation::SetParam(int block_size, int sample_step, double ks, double ki) {
@@ -56,7 +56,7 @@ void StructurePropagation::Run(const Mat &mask, const Mat &img_masked, Mat &mask
                 }
             }
 
-            // Photometric Correction
+            // PhotometricalCorrection Correction
             getResult(mask, sample_indices, known_points, unknown_points, result);
         }
     }
@@ -421,7 +421,7 @@ void StructurePropagation::getResult(Mat mask, int *sample_indices, const vector
         }
     }
 
-    Photometric::initMask(result, mask);
+    PhotometricalCorrection::initMask(result, mask);
 
     int offset1 = block_size / 2;
     int offset2 = block_size - offset1;
@@ -432,7 +432,7 @@ void StructurePropagation::getResult(Mat mask, int *sample_indices, const vector
         Point tar = point_manager.getPoint(unknown_points[i]);
 
         Mat patch = result(Rect(src.x - offset1, src.y - offset1, block_size, block_size)).clone();
-        Photometric::correctE(patch, src.x - offset1, src.y - offset1);
+        PhotometricalCorrection::correctE(patch, src.x - offset1, src.y - offset1);
 
         for (int m = -offset1; m < offset2; m++) {
             const Vec3b *srcPtr = result.ptr<Vec3b>(src.y + m);
