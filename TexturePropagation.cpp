@@ -1,7 +1,15 @@
 #include "TexturePropagation.h"
+#include "PhotometricalCorrection.h"
 
 void mergeImg(Mat &dst, Mat &src1, Mat &src2)
 {
+
+	/*	imshow("output", dst);
+		imshow("img", src1);
+		imshow("result", src2);
+		waitKey(10);
+		*/
+
 	int rows = src1.rows;
 	int cols = src1.cols + 5 + src2.cols;
 	CV_Assert(src1.type() == src2.type());
@@ -10,101 +18,21 @@ void mergeImg(Mat &dst, Mat &src1, Mat &src2)
 	src2.copyTo(dst(Rect(src1.cols + 5, 0, src2.cols, src2.rows)));
 }
 
-int sqr(int x)
+inline int pow2(int x)
 {
 	return x * x;
 }
 
-int dist(Vec3b V1, Vec3b V2)
+inline int Ei(Vec3b V1, Vec3b V2)
 {
-	return sqr(int(V1[0]) - int(V2[0])) + sqr(int(V1[1]) - int(V2[1])) + sqr(int(V1[2]) - int(V2[2]));
-	/*double pr = (V1[0] + V2[0]) * 0.5;
-	return sqr(V1[0] - V2[0]) * (2 + (255 - pr) / 256)
-	+ sqr(V1[1] - V2[1]) * 4
-	+ sqr(V1[2] - V2[2]) * (2 + pr / 256);*/
-}
-
-Mat1b getContous(string a, Mat1b linemask)
-{
-	// M是高度
-	// N是长度
-	int M, N;
-	int safe_distence = 18; // 距离结构线的安全距离
-	M = linemask.rows;
-	N = linemask.cols;
-	ifstream infile;
-	Mat1b myMap = Mat::zeros(cv::Size(N, M), CV_8UC1);
-	Mat1b contousMap = Mat::zeros(cv::Size(N, M), CV_8UC1);
-	infile.open(a.data());	  // 将文件流对象与文件连接起来
-	assert(infile.is_open()); // 若失败,则输出错误消息,并终止程序运行
-	string s;
-	while (getline(infile, s))
-	{
-		// cout << s << endl;
-		std::string::size_type pos = s.find(" ");
-		std::string firstStr = s.substr(0, pos);
-		std::string laterStr = s.substr(pos + strlen(" "));
-		/*cout << firstStr << endl;
-		cout << laterStr << endl;*/
-		int p = atoi(firstStr.c_str());
-		int q = atoi(laterStr.c_str());
-		myMap[q][p] = 255; // 左上角是0，0;;前者是纵坐标，后者是横坐标
-	}
-	/*cout << M << "  " << N << endl;
-	cout << myMap[M][N] << endl;*/
-	int areaIndex = 1;
-	int flag = 0; // 判读是否是line
-	int threshold = 0;
-	for (int i = 15; i < N - 15; i++)
-	{
-		for (int j = 15; j < M - 15; j++)
-		{
-			if (myMap[j][i] == 0)
-			{
-				threshold++;
-				if (threshold < safe_distence)
-				{
-					continue;
-				}
-				if (flag == 1)
-				{
-					areaIndex++;
-				}
-				flag = 0;
-				contousMap[j][i] = areaIndex;
-				// cout << contousMap[j][i]
-				/*myMap[j][i] = 255;
-				cout << areaIndex << endl;
-				imshow("window", myMap);
-				waitKey(10);*/
-			}
-			else
-			{
-				for (int back = 1; back < safe_distence; back++)
-				{
-					// myMap[j-back][i] = 0;
-					if (j - back > 0)
-						contousMap[j - back][i] = 0;
-				}
-				flag = 1;
-				threshold = 0;
-			}
-		}
-		areaIndex = 1;
-	}
-
-	// cout << contousMap << endl;
-	infile.close();
-
-	return contousMap;
+	return pow2(int(V1[0]) - int(V2[0])) + pow2(int(V1[1]) - int(V2[1])) + pow2(int(V1[2]) - int(V2[2]));
 }
 
 // 全黑色是0，全白色是255
 //  mask: 二值化的mask图像
-//  Linemask：暂时理解为结构线
 //  mat：是之前带有mask的没有进行纹理补全的结果
 //  result：最后输出的结果
-void TextureCompletion3(Mat3b img, Mat1b map, Mat1b _mask, Mat1b LineMask, const Mat3b &mat, Mat &result)
+void texturePropagation(Mat3b img, Mat1b _mask, const Mat3b &mat, Mat &result)
 {
 	int N = _mask.rows;
 	int M = _mask.cols;
@@ -116,14 +44,6 @@ void TextureCompletion3(Mat3b img, Mat1b map, Mat1b _mask, Mat1b LineMask, const
 			knowncount += (_mask.at<uchar>(i, j) == 255);
 			// 统计输入mask中纯白色像素点的个数
 		}
-	// 做了一种优化处理，判断是黑色点多还是白色点多，从而进行后面的操作
-	//  mask部分是0白色？？
-	if (knowncount * 2 < N * M)
-	{
-		for (int i = 0; i < N; i++)
-			for (int j = 0; j < M; j++)
-				_mask.at<uchar>(i, j) = 255 - _mask.at<uchar>(i, j);
-	}
 
 	// 新建一个my_mask和sum_diff
 	vector<vector<int>> my_mask(N, vector<int>(M, 0)), sum_diff(N, vector<int>(M, 0));
@@ -133,22 +53,19 @@ void TextureCompletion3(Mat3b img, Mat1b map, Mat1b _mask, Mat1b LineMask, const
 		{
 			// mymask对应于mask（mask中的黑色遮挡部分mymask为0，mask白色部分mymask为1）
 			my_mask[i][j] = (_mask.at<uchar>(i, j) == 255);
-			// 如果mymask中的一个位置坐标既是遮挡，又是LineMask中的灰色部分，则标注为2
-			if (my_mask[i][j] == 0 && LineMask.at<uchar>(i, j) > 0)
-			{
-				my_mask[i][j] = 2;
-			}
 		}
+
 	/*
-	my_mask的结构
-	1 1 1 1 1 1 1
-	1 1 1 1 1 1 1
-	1 0 0 0 0 0 1
-	1 0 0 0 2 0 1  ---结构线
-	1 0 2 2 2 0 1  ---结构线
-	1 0 0 0 0 0 1
-	1 1 1 1 1 1 1
-	*/
+		my_mask的结构:0表示遮挡，1表示非遮挡
+		1 1 1 1 1 1 1
+		1 1 1 1 1 1 1
+		1 0 0 0 1 0 1
+		1 0 0 0 1 0 1
+		1 1 1 1 1 1 1
+		1 0 0 0 1 0 1
+		1 1 1 1 1 1 1
+
+		*/
 
 	int bs = 5;
 	int step = 6;
@@ -263,17 +180,13 @@ void TextureCompletion3(Mat3b img, Mat1b map, Mat1b _mask, Mat1b LineMask, const
 				if (usable[i][j] == 2)
 					continue;
 				// 判断两者是否实在同一个area
-				// cout << "-属于的区域是: " << map[i][j] << endl;
-				if (map[i][j] != map[x][y])
-					continue;
 				int tmp_diff = 0;
 				// 取到xy周围step的矩形邻域
 				for (int k = -k0; k <= k1; k++)
 					for (int l = -l0; l <= l1; l++)
 					{
-
 						if (my_mask[x + k][y + l] != 0)
-							tmp_diff += dist(result.at<Vec3b>(i + k, j + l), result.at<Vec3b>(x + k, y + l));
+							tmp_diff += Ei(result.at<Vec3b>(i + k, j + l), result.at<Vec3b>(x + k, y + l));
 					}
 				sum_diff[i][j] = tmp_diff;
 				if (min_diff > tmp_diff)
@@ -293,15 +206,13 @@ void TextureCompletion3(Mat3b img, Mat1b map, Mat1b _mask, Mat1b LineMask, const
 					// 通过usable找到最近的不需要填充的像素点
 					// 如果==2说明这里的纹理不可用
 					// if (usable[i][j] == 2)continue;
-					if (map[i][j] != map[x][y])
-						continue;
 					int tmp_diff = 0;
 					// 取到xy周围step的矩形邻域
 					for (int k = -k0; k <= k1; k++)
 						for (int l = -l0; l <= l1; l++)
 						{
 							if (my_mask[x + k][y + l] != 0)
-								tmp_diff += dist(result.at<Vec3b>(i + k, j + l), result.at<Vec3b>(x + k, y + l));
+								tmp_diff += Ei(result.at<Vec3b>(i + k, j + l), result.at<Vec3b>(x + k, y + l));
 						}
 					sum_diff[i][j] = tmp_diff;
 					if (min_diff > tmp_diff)
@@ -325,61 +236,20 @@ void TextureCompletion3(Mat3b img, Mat1b map, Mat1b _mask, Mat1b LineMask, const
 					img.at<Vec3b>(x, y) = Vec3b(0, 0, 255);
 				}
 
-		//				mergeImg(output, img, result);
-		//				imshow("Output", output);
-		//				waitKey(10);
 		printf("done :%.2lf%%\n", 100.0 * filled / to_fill);
 		// imwrite("final.png", result);
 		imshow("run", result);
 		waitKey(10);
 	}
 	mergeImg(output, img, result);
-	//			imwrite("final.png", result);
-	//			imwrite("Output.png", output);
-	//			imshow("Output", output);
-	//			waitKey(0);
 }
 
-void texture(Mat origin, Mat img, Mat mask, Mat &finalResult2, Mat Linemask, string listpath)
+void texture(Mat origin, Mat img, Mat mask, Mat &finalResult2)
 {
-	// 四个输入：mask，line，
-	int m, n;
-	// 读入原图
-	//	Mat3b origin = imread("../Texture/origin/img4.png");
-	//	Mat3b img = imread("../Texture/sp_result/sp4.png");//5,1
 
-	// 读入二值化的mask图像
-	//	Mat1b mask = Mat::zeros(img.rows, img.cols, CV_8UC1);
-	//	mask = imread("../Texture/mask/mask4.bmp", 0);
-
-	threshold(mask, mask, 125, 255, CV_THRESH_BINARY_INV);
-	/*imshow("img", img);
-	waitKey(10);
 	imshow("mask", mask);
-	waitKey(10);*/
-	// 生成带有mask但是没有进行补全的图
-	Mat3b result;
-	result.zeros(img.size());
-	img.copyTo(result, mask);
-	/*imshow("result", result);
-	waitKey(10);*/
-	// 读入linemask
-	//	Mat1b Linemask = Mat::zeros(img.rows, img.cols, CV_8UC1);
-	//	Linemask = imread("../Texture/line/mask_s4.bmp", 0);
 
-	/*imshow("line", Linemask);
-	waitKey(10);*/
-	// 最终结果变量
-	//	Mat3b finalResult2(img.size());
-	img.copyTo(finalResult2);
-	//	Mat3b finalResult1(img.size());
-	//	img.copyTo(finalResult1);
-	/*imshow("final", finalResult1);]
-	waitKey(10);*/
-	Mat1b map = getContous(listpath, Linemask);
-	// TextureCompletion1(mask, Linemask, result, finalResult1);
-	// TextureCompletion2(mask, Linemask, result, finalResult2);
-	TextureCompletion3(origin, map, mask, Linemask, result, finalResult2);
-	//    imshow("final", finalResult2);
-	//    waitKey(0);
+	texturePropagation(origin, mask, img, finalResult2);
+
+	imshow("finalresult", finalResult2);
 }
