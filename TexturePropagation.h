@@ -13,6 +13,6 @@
 using namespace cv;
 using namespace std;
 
-void texture(Mat origin, Mat img, Mat mask, Mat &result, Mat Linemask, string listpath);
+void texture(Mat origin, Mat img, Mat mask, Mat &result);
 
 #endif // IMAGECOMPLETION_TEXTUREPROPAGATION_H

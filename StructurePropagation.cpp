@@ -5,7 +5,8 @@
 #include "PhotometricalCorrection.h"
 
 // set parameters
-void StructurePropagation::SetParam(int block_size, int sample_step, double ks, double ki) {
+void StructurePropagation::SetParam(int block_size, int sample_step, double ks, double ki)
+{
     this->block_size = block_size;
     this->sample_step = sample_step;
     this->ks = ks;
@@ -15,7 +16,8 @@ void StructurePropagation::SetParam(int block_size, int sample_step, double ks, 
 // run structure propagation
 void StructurePropagation::Run(const Mat &mask, const Mat &img_masked, Mat &mask_after_propagation,
                                vector<vector<Point>> &structure_line_points,
-                               Mat &result) {
+                               Mat &result)
+{
     mask_after_propagation = Mat::zeros(mask.size(), CV_8UC1);
 
     Mat image_src_grey;
@@ -30,26 +32,35 @@ void StructurePropagation::Run(const Mat &mask, const Mat &img_masked, Mat &mask
     vector<PointPos> unknown_points;
     vector<PointPos> known_points;
     set<shared_ptr<list<int>>>::iterator iter;
-    for (iter = line_sets.begin(); iter != line_sets.end(); iter++) {
+    for (iter = line_sets.begin(); iter != line_sets.end(); iter++)
+    {
         point_manager.getKnownPoint(known_points, sample_step, **iter);
-        if (!known_points.empty()) {
+        if (!known_points.empty())
+        {
             // if there's only one structure line, use DP, otherwise use BP
-            if ((*iter)->size() == 1) {
+            if ((*iter)->size() == 1)
+            {
                 point_manager.getUnknownPoint(unknown_points, **iter);
                 sample_indices = DP(known_points, unknown_points, image_src_grey);
-            } else {
+            }
+            else
+            {
                 point_manager.constructBpMap(**iter);
                 sample_indices = BP(known_points, unknown_points, image_src_grey);
             }
 
             // update mask (mark anchored patches as known)
-            for (auto p: unknown_points) {
+            for (auto p : unknown_points)
+            {
                 Point tar = point_manager.getPoint(p);
-                for (int j = -block_size / 2; j < block_size / 2; j++) {
-                    for (int k = -block_size / 2; k < block_size / 2; k++) {
+                for (int j = -block_size / 2; j < block_size / 2; j++)
+                {
+                    for (int k = -block_size / 2; k < block_size / 2; k++)
+                    {
                         int y = j + tar.y;
                         int x = k + tar.x;
-                        if (x >= 0 && y >= 0 && x < mask_after_propagation.cols && y < mask_after_propagation.rows) {
+                        if (x >= 0 && y >= 0 && x < mask_after_propagation.cols && y < mask_after_propagation.rows)
+                        {
                             mask_after_propagation.at<uchar>(y, x) = 255;
                         }
                     }
@@ -64,13 +75,15 @@ void StructurePropagation::Run(const Mat &mask, const Mat &img_masked, Mat &mask
 
 // called when only one structure line exists
 int *StructurePropagation::DP(const vector<PointPos> &known_points, vector<PointPos> &unknown_points,
-                              const Mat &image_src_grey) {
+                              const Mat &image_src_grey)
+{
 
-    auto *M = (double *) malloc(2 * known_points.size() * sizeof(double));
-    auto *record = (int *) malloc(known_points.size() * unknown_points.size() * sizeof(int));
+    auto *M = (double *)malloc(2 * known_points.size() * sizeof(double));
+    auto *record = (int *)malloc(known_points.size() * unknown_points.size() * sizeof(int));
 
     // first anchor point
-    for (int xi = 0; xi < known_points.size(); xi++) {
+    for (int xi = 0; xi < known_points.size(); xi++)
+    {
         M[xi] = ks * computeEs(unknown_points[0], known_points[xi]) +
                 ki * computeEi(image_src_grey, unknown_points[0], known_points[xi]);
     }
@@ -78,20 +91,25 @@ int *StructurePropagation::DP(const vector<PointPos> &known_points, vector<Point
     // for each anchor point, for each xi, compute M
     int curr_offset = 0;
     int prev_offset = 0;
-    for (int i = 1; i < unknown_points.size(); i++) {
+    for (int i = 1; i < unknown_points.size(); i++)
+    {
         curr_offset = (i % 2) * known_points.size();
         prev_offset = ((i + 1) % 2) * known_points.size();
 
-        for (int xi = 0; xi < known_points.size(); xi++) {
+        for (int xi = 0; xi < known_points.size(); xi++)
+        {
             double E1 = ks * computeEs(unknown_points[i], known_points[xi]) +
                         ki * computeEi(image_src_grey, unknown_points[i], known_points[xi]);
 
             double min_E2 = 1e9 + 7;
             int min_ind = 0;
-            for (int xj = 0; xj < known_points.size(); xj++) {
+            for (int xj = 0; xj < known_points.size(); xj++)
+            {
                 double tmp = computeE2(image_src_grey, unknown_points[i], unknown_points[i - 1],
-                                       known_points[xi], known_points[xj]) + M[prev_offset + xj];
-                if (tmp < min_E2) {
+                                       known_points[xi], known_points[xj]) +
+                             M[prev_offset + xj];
+                if (tmp < min_E2)
+                {
                     min_E2 = tmp;
                     min_ind = xj;
                 }
@@ -102,17 +120,20 @@ int *StructurePropagation::DP(const vector<PointPos> &known_points, vector<Point
         }
     }
 
-    int *sample_indices = (int *) malloc(unknown_points.size() * sizeof(int));
+    int *sample_indices = (int *)malloc(unknown_points.size() * sizeof(int));
     double min = INT_MAX;
-    for (int xi = 0; xi < known_points.size(); xi++) {
-        if (M[curr_offset + xi] < min) {
+    for (int xi = 0; xi < known_points.size(); xi++)
+    {
+        if (M[curr_offset + xi] < min)
+        {
             sample_indices[unknown_points.size() - 1] = xi;
             min = M[curr_offset + xi];
         }
     }
 
     // trace back
-    for (int i = unknown_points.size() - 2; i >= 0; i--) {
+    for (int i = unknown_points.size() - 2; i >= 0; i--)
+    {
         sample_indices[i] = record[known_points.size() * (i + 1) + sample_indices[i + 1]];
     }
 
@@ -123,7 +144,8 @@ int *StructurePropagation::DP(const vector<PointPos> &known_points, vector<Point
 }
 
 // used in DP
-double StructurePropagation::computeEs(const PointPos &i, const PointPos &xi) {
+double StructurePropagation::computeEs(const PointPos &i, const PointPos &xi)
+{
     // get points of curve segment contained in patch
     list<Point *> begin1, begin2;
     list<int> length1, length2;
@@ -131,21 +153,25 @@ double StructurePropagation::computeEs(const PointPos &i, const PointPos &xi) {
     point_manager.getPointsInPatch(xi, begin2, length2);
 
     int len1 = 0;
-    for (auto l: length1) {
+    for (auto l : length1)
+    {
         len1 += l;
     }
 
     int len2 = 0;
-    for (auto l: length2) {
+    for (auto l : length2)
+    {
         len2 += l;
     }
     static vector<int> min_dist1(len1), min_dist2(len2);
 
     // initialize minimal distance
-    for (int i = 0; i < len1; i++) {
+    for (int i = 0; i < len1; i++)
+    {
         min_dist1[i] = INT_MAX;
     }
-    for (int i = 0; i < len2; i++) {
+    for (int i = 0; i < len2; i++)
+    {
         min_dist2[i] = INT_MAX;
     }
 
@@ -158,20 +184,26 @@ double StructurePropagation::computeEs(const PointPos &i, const PointPos &xi) {
 
     // compute minimal distance
     for (line_iter1 = length1.begin(), point_iter1 = begin1.begin();
-         line_iter1 != length1.end(); line_iter1++, point_iter1++) {
+         line_iter1 != length1.end(); line_iter1++, point_iter1++)
+    {
         Point *points1 = *point_iter1;
-        for (int i = 0; i < *line_iter1; i++) {
+        for (int i = 0; i < *line_iter1; i++)
+        {
             for (line_iter2 = length2.begin(), point_iter2 = begin2.begin();
-                 line_iter2 != length2.end(); line_iter2++, point_iter2++) {
-                for (int j = 0; j < *line_iter2; j++) {
+                 line_iter2 != length2.end(); line_iter2++, point_iter2++)
+            {
+                for (int j = 0; j < *line_iter2; j++)
+                {
                     Point *points2 = *point_iter2;
                     int dx = points1[i].x - points2[j].x + offset_x;
                     int dy = points1[i].y - points2[j].y + offset_y;
                     int dist = dx * dx + dy * dy;
-                    if (dist < min_dist1[i]) {
+                    if (dist < min_dist1[i])
+                    {
                         min_dist1[i] = dist;
                     }
-                    if (dist < min_dist2[j]) {
+                    if (dist < min_dist2[j])
+                    {
                         min_dist2[j] = dist;
                     }
                 }
@@ -180,37 +212,46 @@ double StructurePropagation::computeEs(const PointPos &i, const PointPos &xi) {
     }
 
     int Es = 0;
-    for (auto d: min_dist1) {
+    for (auto d : min_dist1)
+    {
         Es += d;
     }
-    for (auto d: min_dist2) {
+    for (auto d : min_dist2)
+    {
         Es += d;
     }
-    return (double) Es / min_dist1.size();
+    return (double)Es / min_dist1.size();
 }
 
 // used in DP
-double StructurePropagation::computeEi(const Mat &image_src, const PointPos &i, const PointPos &xi) {
+double StructurePropagation::computeEi(const Mat &image_src, const PointPos &i, const PointPos &xi)
+{
     // compute Ei for every boundary patch
-    if (point_manager.nearBoundary(i)) {
+    if (point_manager.nearBoundary(i))
+    {
         Point pi = point_manager.getPoint(i);
         Point pxi = point_manager.getPoint(xi);
 
         int cnt = 0;
         int ssd = 0;
-        for (int i = -block_size / 2; i < block_size / 2; i++) {
+        for (int i = -block_size / 2; i < block_size / 2; i++)
+        {
             auto *point_i = image_src.ptr<uchar>(i + pi.y);
             auto *point_xi = image_src.ptr<uchar>(i + pxi.y);
-            for (int j = -block_size / 2; j < block_size / 2; j++) {
-                if (point_i[j + pi.x] != 0) {
+            for (int j = -block_size / 2; j < block_size / 2; j++)
+            {
+                if (point_i[j + pi.x] != 0)
+                {
                     int diff = point_i[j + pi.x] - point_xi[j + pxi.x];
                     ssd += diff * diff;
                     cnt++;
                 }
             }
         }
-        return (double) ssd / cnt;
-    } else {
+        return (double)ssd / cnt;
+    }
+    else
+    {
         return 0;
     }
 }
@@ -218,7 +259,8 @@ double StructurePropagation::computeEi(const Mat &image_src, const PointPos &i, 
 // used in DP
 double
 StructurePropagation::computeE2(const Mat &image_src, const PointPos &i1, const PointPos &i2, const PointPos &xi1,
-                                const PointPos &xi2) {
+                                const PointPos &xi2)
+{
     Point p1 = point_manager.getPoint(i1);
     Point p2 = point_manager.getPoint(i2);
     Point px1 = point_manager.getPoint(xi1);
@@ -226,24 +268,30 @@ StructurePropagation::computeE2(const Mat &image_src, const PointPos &i1, const 
 
     int left1, left2, right1, right2;
     int up1, up2, down1, down2;
-    if (p1.x > p2.x) {
+    if (p1.x > p2.x)
+    {
         left1 = 0;
         left2 = p1.x - p2.x;
         right1 = block_size - left2;
         right2 = block_size;
-    } else {
+    }
+    else
+    {
         left2 = 0;
         left1 = p2.x - p1.x;
         right2 = block_size - left1;
         right1 = block_size;
     }
 
-    if (p1.y > p2.y) {
+    if (p1.y > p2.y)
+    {
         up1 = 0;
         up2 = p1.y - p2.y;
         down1 = block_size - up2;
         down2 = block_size;
-    } else {
+    }
+    else
+    {
         up2 = 0;
         up1 = p2.y - p1.y;
         down2 = block_size - up1;
@@ -251,26 +299,31 @@ StructurePropagation::computeE2(const Mat &image_src, const PointPos &i1, const 
     }
 
     // compute E2 between every pair of neighboring patches
-    if (right1 >= 0 && right2 >= 0 && down1 >= 0 && down2 >= 0) {
+    if (right1 >= 0 && right2 >= 0 && down1 >= 0 && down2 >= 0)
+    {
         int cols = right1 - left1;
         int rows = down1 - up1;
 
         double ssd = 0;
-        for (int i = 0; i < rows; i++) {
+        for (int i = 0; i < rows; i++)
+        {
             const auto *ptr1 = image_src.ptr<uchar>(i + up1 + px1.y - block_size / 2);
             const auto *ptr2 = image_src.ptr<uchar>(i + up2 + px2.y - block_size / 2);
-            for (int j = 0; j < cols; j++) {
+            for (int j = 0; j < cols; j++)
+            {
                 double diff = ptr1[j + left1 + px1.x - block_size / 2] - ptr2[j + left2 + px2.x - block_size / 2];
                 ssd += diff * diff;
             }
         }
         return ssd / (cols * rows);
-    } else {
+    }
+    else
+    {
         return 0;
     }
 }
 
-//对于多结构的线，使用Belief Propagation
+// 对于多结构的线，使用Belief Propagation
 int *StructurePropagation::BP(const vector<PointPos> &known_points, vector<PointPos> &unknown_points, const Mat &image_src)
 {
 
@@ -278,7 +331,7 @@ int *StructurePropagation::BP(const vector<PointPos> &known_points, vector<Point
     unknown_points.clear();
     unknown_points.reserve(size);
 
-    //从已经建好链表的point_manager取得迭代器，迭代会从多线的交点开始
+    // 从已经建好链表的point_manager取得迭代器，迭代会从多线的交点开始
     list<shared_ptr<MyNode>>::iterator iter;
     list<shared_ptr<MyNode>>::iterator end;
     point_manager.getStackIter(iter, end);
@@ -293,8 +346,8 @@ int *StructurePropagation::BP(const vector<PointPos> &known_points, vector<Point
         computeMij(*n, n->getEdgeBegin(), image_src, known_points);
     }
 
-    auto *sample_scores = (int *) malloc(size * sizeof(int));
-    auto *bp_visited = (double *) malloc(known_points.size() * sizeof(double));
+    auto *sample_scores = (int *)malloc(size * sizeof(int));
+    auto *bp_visited = (double *)malloc(known_points.size() * sizeof(double));
 
     list<shared_ptr<MyNode>>::reverse_iterator rev_itor;
     list<shared_ptr<MyNode>>::reverse_iterator rev_end;
@@ -309,7 +362,6 @@ int *StructurePropagation::BP(const vector<PointPos> &known_points, vector<Point
         auto edge_iter = begin;
         unknown_points.push_back(n->p);
 
-    
         for (edge_iter++; edge_iter != end; edge_iter++)
         {
             computeMij(*n, edge_iter, image_src, known_points);
@@ -318,7 +370,8 @@ int *StructurePropagation::BP(const vector<PointPos> &known_points, vector<Point
         // 算E1
         int min_ind = 0;
         double min = INT64_MAX;
-        for (int xi = 0; xi < known_points.size(); xi++) {
+        for (int xi = 0; xi < known_points.size(); xi++)
+        {
             bp_visited[xi] = ks * computeEs(n->p, known_points[xi]) + ki * computeEi(image_src, n->p, known_points[xi]);
         }
 
@@ -326,7 +379,8 @@ int *StructurePropagation::BP(const vector<PointPos> &known_points, vector<Point
         for (edge_iter = begin; edge_iter != end; edge_iter++)
         {
             double **toMptr = (*edge_iter)->getMbyTo(n->id);
-            for (int i = 0; i < known_points.size(); i++) {
+            for (int i = 0; i < known_points.size(); i++)
+            {
                 bp_visited[i] += (*toMptr)[i];
             }
         }
@@ -345,13 +399,16 @@ int *StructurePropagation::BP(const vector<PointPos> &known_points, vector<Point
 
     // release resources
     point_manager.getStackIter(iter, end);
-    for (; iter != end; iter++) {
+    for (; iter != end; iter++)
+    {
         shared_ptr<MyNode> n = *iter;
         auto edge_iter = n->getEdgeBegin();
         auto end = n->getEdgeEnd();
-        for (; edge_iter != end; edge_iter++) {
+        for (; edge_iter != end; edge_iter++)
+        {
             double **M = (*edge_iter)->getMbyFrom(n->id);
-            if (*M != nullptr) {
+            if (*M != nullptr)
+            {
                 free(*M);
             }
         }
@@ -362,25 +419,30 @@ int *StructurePropagation::BP(const vector<PointPos> &known_points, vector<Point
 }
 
 // used in both DP and BP
-void
-StructurePropagation::computeMij(MyNode &n, const list<shared_ptr<Edge>>::iterator &edge_iter, const Mat &image_src,
-                                 const vector<PointPos> &known_points) {
+void StructurePropagation::computeMij(MyNode &n, const list<shared_ptr<Edge>>::iterator &edge_iter, const Mat &image_src,
+                                      const vector<PointPos> &known_points)
+{
     double **Mptr = (*edge_iter)->getMbyFrom(n.id);
     auto end = n.getEdgeEnd();
 
-    if (*Mptr == nullptr) {
-        *Mptr = (double *) malloc(known_points.size() * sizeof(double));
+    if (*Mptr == nullptr)
+    {
+        *Mptr = (double *)malloc(known_points.size() * sizeof(double));
         memset(*Mptr, 0, known_points.size() * sizeof(double));
 
-        for (int i = 0; i < known_points.size(); i++) {
+        for (int i = 0; i < known_points.size(); i++)
+        {
             double E1 = ks * computeEs(n.p, known_points[i]) + ki * computeEi(image_src, n.p, known_points[i]);
 
             // add up messages sent from   (k != j)
             double msg = 0;
-            for (auto iter = n.getEdgeBegin(); iter != end; iter++) {
-                if (iter != edge_iter) {
+            for (auto iter = n.getEdgeBegin(); iter != end; iter++)
+            {
+                if (iter != edge_iter)
+                {
                     double **toMptr = (*iter)->getMbyTo(n.id);
-                    if (*toMptr == nullptr) {
+                    if (*toMptr == nullptr)
+                    {
                         assert(0);
                     }
                     msg += (*toMptr)[i];
@@ -388,10 +450,12 @@ StructurePropagation::computeMij(MyNode &n, const list<shared_ptr<Edge>>::iterat
             }
 
             PointPos tmpPos = point_manager.getPointPos((*edge_iter)->getAnother(n.id));
-            for (int j = 0; j < known_points.size(); j++) {
+            for (int j = 0; j < known_points.size(); j++)
+            {
                 // update each item in Mij
                 double E2 = computeE2(image_src, n.p, tmpPos, known_points[i], known_points[j]);
-                if ((*Mptr)[j] == 0 || E1 + E2 + msg < (*Mptr)[j]) {
+                if ((*Mptr)[j] == 0 || E1 + E2 + msg < (*Mptr)[j])
+                {
                     (*Mptr)[j] = E1 + E2 + msg;
                 }
             }
@@ -399,9 +463,11 @@ StructurePropagation::computeMij(MyNode &n, const list<shared_ptr<Edge>>::iterat
     }
 }
 
-inline Vec3b AlphaBlending(Vec3b pixel1, Vec3b pixel2, double alpha) {
+inline Vec3b AlphaBlending(Vec3b pixel1, Vec3b pixel2, double alpha)
+{
     Vec3b res;
-    for (int i = 0; i < 3; i++) {
+    for (int i = 0; i < 3; i++)
+    {
         res[i] = uchar(pixel1[i] * alpha + pixel2[i] * (1 - alpha));
     }
     return res;
@@ -409,17 +475,25 @@ inline Vec3b AlphaBlending(Vec3b pixel1, Vec3b pixel2, double alpha) {
 
 // update mask and unknown points, call photometric correction and get final result
 void StructurePropagation::getResult(Mat mask, int *sample_indices, const vector<PointPos> &known_points,
-                                     vector<PointPos> &unknown_points, Mat &result) {
+                                     vector<PointPos> &unknown_points, Mat &result)
+{
     // update mask
     vector<vector<int>> tmp_mask(mask.rows, vector<int>(mask.cols, 0));
-    for (int i = 0; i < mask.rows; i++) {
-        for (int j = 0; j < mask.cols; j++) {
+    for (int i = 0; i < mask.rows; i++)
+    {
+        for (int j = 0; j < mask.cols; j++)
+        {
             tmp_mask[i][j] = (mask.at<uchar>(i, j) > 0);
-            if (tmp_mask[i][j]) {
+            if (tmp_mask[i][j])
+            {
                 mask.at<uchar>(i, j) = 255;
             }
         }
     }
+
+    imshow("photom result", result);
+    imshow("photom mask", mask);
+    std::cout << "sample idices:" << sample_indices << std::endl;
 
     PhotometricalCorrection::initMask(result, mask);
 
@@ -427,23 +501,29 @@ void StructurePropagation::getResult(Mat mask, int *sample_indices, const vector
     int offset2 = block_size - offset1;
 
     // copy all sample patches to corresponding unknown patches
-    for (int i = 0; i < unknown_points.size(); i++) {
+    for (int i = 0; i < unknown_points.size(); i++)
+    {
         Point src = point_manager.getPoint(known_points[sample_indices[i]]);
         Point tar = point_manager.getPoint(unknown_points[i]);
 
         Mat patch = result(Rect(src.x - offset1, src.y - offset1, block_size, block_size)).clone();
         PhotometricalCorrection::correctE(patch, src.x - offset1, src.y - offset1);
 
-        for (int m = -offset1; m < offset2; m++) {
+        for (int m = -offset1; m < offset2; m++)
+        {
             const Vec3b *srcPtr = result.ptr<Vec3b>(src.y + m);
-            for (int n = -offset1; n < offset2; n++) {
+            for (int n = -offset1; n < offset2; n++)
+            {
                 Vec3b tmp = result.at<Vec3b>(tar.y + m, tar.x + n);
-                if (tmp_mask[tar.y + m][tar.x + n] == 0) {
+                if (tmp_mask[tar.y + m][tar.x + n] == 0)
+                {
                     result.at<Vec3b>(tar.y + m, tar.x + n) = srcPtr[src.x + n];
                     tmp_mask[tar.y + m][tar.x + n] = 1;
-                } else {
+                }
+                else
+                {
                     result.at<Vec3b>(tar.y + m, tar.x + n) =
-                            AlphaBlending(srcPtr[src.x + n], result.at<Vec3b>(tar.y + m, tar.x + n), 0.5);
+                        AlphaBlending(srcPtr[src.x + n], result.at<Vec3b>(tar.y + m, tar.x + n), 0.5);
                 }
             }
         }

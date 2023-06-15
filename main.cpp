@@ -247,11 +247,9 @@ void structurePropagation()
             ts_result = image_with_mask.clone();
             // texture propagation, argument: source image, result of structure, mask, the s'
 
-            imshow("image_src", image_src);
-            imshow("sp_result", sp_result);
-            imshow("mask", mask);
-            imshow("ts_result", ts_result);
-            // texture(image_src, sp_result, mask, ts_result, mask_structure, );
+            texture(image_src, sp_result, mask, ts_result);
+
+            imwrite(save_path, ts_result);
             break;
 
         case 'r':
