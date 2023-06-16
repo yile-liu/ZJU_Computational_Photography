@@ -10,9 +10,11 @@
 #include <string.h>
 #include <queue>
 
+#define VISABLE 1
+
 using namespace cv;
 using namespace std;
 
-void texture(Mat origin, Mat img, Mat mask, Mat &result);
+void texturePropagation(Mat3b img, Mat1b _mask, const Mat3b &mat, Mat &result);
 
 #endif // IMAGECOMPLETION_TEXTUREPROPAGATION_H

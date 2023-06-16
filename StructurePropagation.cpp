@@ -491,8 +491,6 @@ void StructurePropagation::getResult(Mat mask, int *sample_indices, const vector
         }
     }
 
-    imshow("photom result", result);
-    imshow("photom mask", mask);
     std::cout << "sample idices:" << sample_indices << std::endl;
 
     PhotometricalCorrection::initMask(result, mask);

@@ -3,10 +3,9 @@
 #include "eigen3/Eigen/Sparse"
 #include <iostream>
 
-
 #define MASK_DST 0
-#define MASK_SRC 1
-#define MASK_BORDER 2
+#define MASK_SRC 100
+#define MASK_BORDER 255
 #define MASK_BOUNDARY 3
 
 int offset_t[4][2] = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
@@ -40,6 +39,9 @@ void PhotometricalCorrection::initMask(Mat image, Mat imageMask, uchar unknown, 
 	// MASK_BORDER will be useless
 	mask.setTo(Scalar(MASK_BORDER), unknown_roi);
 	mask.setTo(Scalar(MASK_DST), known_roi);
+
+	//	imshow("photo mask", mask);
+	//	waitKey(10);
 	return;
 }
 
@@ -117,7 +119,7 @@ void PhotometricalCorrection::correctE(Mat &patch, int offset_x, int offset_y)
 			{
 				double sum_vpq = 0, sum_boundary = 0;
 				double neighbor = 0;
-				
+
 				for (i = 0; i < 4; i++)
 				{
 					switch (mask.at<uchar>(M_OFFSET(i)))

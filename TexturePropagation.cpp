@@ -1,23 +1,6 @@
 #include "TexturePropagation.h"
 #include "PhotometricalCorrection.h"
 
-void mergeImg(Mat &dst, Mat &src1, Mat &src2)
-{
-
-	/*	imshow("output", dst);
-		imshow("img", src1);
-		imshow("result", src2);
-		waitKey(10);
-		*/
-
-	int rows = src1.rows;
-	int cols = src1.cols + 5 + src2.cols;
-	CV_Assert(src1.type() == src2.type());
-	dst.create(rows, cols, src1.type());
-	src1.copyTo(dst(Rect(0, 0, src1.cols, src1.rows)));
-	src2.copyTo(dst(Rect(src1.cols + 5, 0, src2.cols, src2.rows)));
-}
-
 inline int pow2(int x)
 {
 	return x * x;
@@ -36,6 +19,8 @@ void texturePropagation(Mat3b img, Mat1b _mask, const Mat3b &mat, Mat &result)
 {
 	int N = _mask.rows;
 	int M = _mask.cols;
+	std::cout << "N = " << N << " M = " << M << std::endl;
+
 	int *test_mask;
 	int knowncount = 0;
 	for (int i = 0; i < N; i++)
@@ -70,8 +55,8 @@ void texturePropagation(Mat3b img, Mat1b _mask, const Mat3b &mat, Mat &result)
 	int bs = 5;
 	int step = 6;
 	auto usable(my_mask); // 自动生成了一个和mymask相同类型的变量
-	int to_fill = 0;	  // mymask中未被填充的阴影遮挡的部分（非结构线）
-	int filled = 0;		  // mymask中未被填充的阴影遮挡的部分（非结构线）
+	int to_fill = 0;	  // mymask中未被填充的阴影遮挡的部分
+	int filled = 0;		  // mymask中未被填充的阴影遮挡的部分
 	for (int i = 0; i < N; i++)
 		for (int j = 0; j < M; j++)
 		{
@@ -87,7 +72,7 @@ void texturePropagation(Mat3b img, Mat1b _mask, const Mat3b &mat, Mat &result)
 			// 对于mymask中需要被填充的地方
 			// 在一个step的矩形邻域内，需要把usable标记为2
 			// usable[k][l] == 2说明需要被填充
-			// （我的理解是在原来的mask周围扩大了需要补全纹理的范围，缩小了可用的纹理的范围）
+			// 在原来的mask周围扩大了需要补全纹理的范围，缩小可用的纹理的范围
 			int k0 = max(0, i - bs), k1 = min(N - 1, i + bs);
 			int l0 = max(0, j - bs), l1 = min(M - 1, j + bs);
 			for (int k = k0; k <= k1; k++)
@@ -96,7 +81,7 @@ void texturePropagation(Mat3b img, Mat1b _mask, const Mat3b &mat, Mat &result)
 		}
 
 	// 按照usable中2的地方生成一个黑白图，其中白色是需要填充的地方值为2
-	// 也就是说实际要填充的部分比正常的黑白图要大
+	// 实际要填充的部分比正常的黑白图要大
 	Mat use = _mask.clone();
 	for (int i = 0; i < N; i++)
 		for (int j = 0; j < M; j++)
@@ -119,13 +104,13 @@ void texturePropagation(Mat3b img, Mat1b _mask, const Mat3b &mat, Mat &result)
 				// 略过不需要填充的地方以及轮廓线部分
 				if (my_mask[i][j] != 0)
 					continue;
-				// 此时my_mask[i][j]==0
-				// 首先要找到需要填充的区域的边界点
-				// edge用于判断这个点是不是边界
+
+				// 找到需要填充的区域的边界点
+				// edge用于判断是不是边界
 				bool edge = false;
 				int k0 = max(0, i - 1), k1 = min(N - 1, i + 1);
 				int l0 = max(0, j - 1), l1 = min(M - 1, j + 1);
-				// 取到像素点的一个小邻域8个像素点，如果这个邻域内的点有一个是1则最后edge==true
+				// 取到像素点的一个小邻域8个像素点，如果这个邻域内的点有一个是1则最后edge==1
 				/*
 				1 1 1
 				1 0 1
@@ -133,11 +118,11 @@ void texturePropagation(Mat3b img, Mat1b _mask, const Mat3b &mat, Mat &result)
 				*/
 				for (int k = k0; k <= k1; k++)
 					for (int l = l0; l <= l1; l++)
-						edge |= (my_mask[k][l] == 1); // 或等于 edge = edge | (my_mask==1);
+						edge |= (my_mask[k][l] == 1);
 				if (!edge)
 					continue;
-				// 如果edge==true说明当前像素点是边界点
-				//------猜测后面需要对这个像素点进行融合运算！-------
+				// 如果edge==1说明当前像素点是边界点
+
 				k0 = max(0, i - bs), k1 = min(N - 1, i + bs);
 				l0 = max(0, j - bs), l1 = min(M - 1, j + bs);
 				int tmpcnt = 0;
@@ -154,14 +139,14 @@ void texturePropagation(Mat3b img, Mat1b _mask, const Mat3b &mat, Mat &result)
 				}
 				// 结束for循环的时候xy记录了边界点
 			}
-		// 如果cnt==-1说明所有edge都是false，也就是说所有mymask[i，j]都是1都是不需要填充，跳出while
+		// 如果cnt==-1说明所有edge都是false，也就是说所有都是不需要填充，跳出while
 		if (cnt == -1)
 			break;
 
 		bool debug = false;
 		bool debug2 = false;
 
-		// 这部分再次遍历全图；比较一个邻域内和整张图片其他邻域内是否有相似的块
+		// 遍历全图；比较一个邻域内和整张图片其他邻域内是否有相似的块
 		int k0 = min(x, bs), k1 = min(N - 1 - x, bs);
 		int l0 = min(y, bs), l1 = min(M - 1 - y, bs);
 		// 这里使用p0q0使得本身就在对应点的邻域寻找
@@ -197,7 +182,7 @@ void texturePropagation(Mat3b img, Mat1b _mask, const Mat3b &mat, Mat &result)
 				}
 				// 结束循环的时候，得到的是对比xy有最小tmpdiff的点的坐标sx，sy
 			}
-		//				cout << "对应的点是xy：" << sx << sy << endl;
+
 		if (sx == 1000000 && sy == 1000000)
 		{
 			for (int i = step; i + step < N; i += step)
@@ -223,33 +208,34 @@ void texturePropagation(Mat3b img, Mat1b _mask, const Mat3b &mat, Mat &result)
 					}
 				}
 		}
+
 		// usable[x][y] = -1;
 		// 用（sx，sy）周围的点的RGB值填充xy周围需要被填充的点
+
+		PhotometricalCorrection::initMask(result, _mask, 0, 255);
+		Mat patch = result(Rect(sy - l0, sx - k0, l1 + l0 + 1, k1 + k0 + 1)).clone();
+
+		PhotometricalCorrection::correctE(patch, y - l0, x - k0);
+
 		for (int k = -k0; k <= k1; k++)
 			for (int l = -l0; l <= l1; l++)
+			{
+				result.at<Vec3b>(x + k, y + l) = patch.at<Vec3b>(k0 + k, l0 + l);
+				my_mask[x + k][y + l] = 1;
+				_mask.at<uchar>(x + k, y + l) = 255;
+
 				if (my_mask[x + k][y + l] == 0)
-				{
-					result.at<Vec3b>(x + k, y + l) = result.at<Vec3b>(sx + k, sy + l);
-					my_mask[x + k][y + l] = 1;
-					// usable[x + k][y + l] = 1;
 					filled++;
-					img.at<Vec3b>(x, y) = Vec3b(0, 0, 255);
-				}
+				img.at<Vec3b>(x, y) = Vec3b(0, 0, 255);
+			}
 
-		printf("done :%.2lf%%\n", 100.0 * filled / to_fill);
-		// imwrite("final.png", result);
-		imshow("run", result);
-		waitKey(10);
+		if (VISABLE)
+		{
+			// printf("texture done area:%.2lf%%\n", 100.0 * filled / to_fill);
+			imshow("mask run", _mask);
+			imshow("run", result);
+
+			waitKey(10);
+		}
 	}
-	mergeImg(output, img, result);
-}
-
-void texture(Mat origin, Mat img, Mat mask, Mat &finalResult2)
-{
-
-	imshow("mask", mask);
-
-	texturePropagation(origin, mask, img, finalResult2);
-
-	imshow("finalresult", finalResult2);
 }
