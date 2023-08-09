@@ -1,5 +1,5 @@
-# ZJU_Computational_Photography
-ZJU_Computational_Photography 计算摄影学
+# ZJU_computational_photography
+ZJU_computational_photography 计算摄影学
 
 我在2022-2023春夏学期选了这门课。感想是如果不是对CV感兴趣不太建议选这门专业选修课。
 
